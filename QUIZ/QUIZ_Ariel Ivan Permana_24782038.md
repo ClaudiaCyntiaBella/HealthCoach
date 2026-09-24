@@ -31,44 +31,22 @@ Contoh pengguna yang dapat memanfaatkan HealthCoach adalah mahasiswa, masyarakat
 # BAGIAN 2. RESUME MODUL DIGITAL AWARENESS
 
 ## Modul 1 — There's a Whole New World Out There!
-Perkembangan teknologi membuat berbagai aktivitas yang sebelumnya dilakukan secara manual atau analog mulai berpindah ke lingkungan digital. Perubahan tersebut membuat pekerjaan menjadi lebih mudah, cepat, dan dapat dilakukan dari berbagai tempat. Teknologi digital digunakan untuk berbagai kebutuhan seperti komunikasi, mencari informasi, bekerja, belajar, menyimpan data, dan menggunakan layanan secara online.
-
-Perubahan ke dunia digital juga memiliki sisi yang perlu diperhatikan. Tidak semua orang mempunyai akses dan kemampuan teknologi yang sama sehingga dapat terjadi kesenjangan digital. Selain itu, penggunaan teknologi dapat menimbulkan risiko seperti masalah privasi, keamanan informasi, ketergantungan terhadap perangkat digital, dan terbentuknya jejak digital.
-Pemahaman terhadap dunia digital diperlukan agar seseorang tidak hanya mampu menggunakan teknologi, tetapi juga memahami manfaat, risiko, dan tanggung jawab ketika menggunakannya.
+Modul ini membahas perkembangan teknologi yang mengubah berbagai aktivitas dari cara analog menjadi digital. Teknologi membantu manusia dalam melakukan pekerjaan, belajar, berkomunikasi, mencari informasi, dan menjalankan aktivitas sehari-hari dengan lebih mudah.
 
 ## Modul 2 — You'll Need Some Basic Tools
-Penggunaan teknologi digital membutuhkan pemahaman terhadap perangkat dan fungsi dasarnya. Perangkat komputer memiliki komponen untuk menerima input, melakukan pemrosesan, dan menghasilkan output. Sistem operasi berperan dalam mengatur perangkat keras serta menyediakan lingkungan untuk menjalankan aplikasi.
-
-Pengelolaan file dan folder juga menjadi kemampuan dasar yang penting. File digunakan untuk menyimpan berbagai jenis data, sedangkan folder membantu mengelompokkan file agar lebih mudah ditemukan dan dikelola. Pemberian nama file yang jelas serta penggunaan struktur folder yang teratur dapat mempermudah proses pencarian dan pengelolaan data.
-
-Keamanan akses juga berkaitan dengan penggunaan password. Password dapat dibuat dalam berbagai bentuk, seperti kombinasi huruf dan angka, penggunaan simbol, passphrase, random letters, PIN, hingga sistem autentikasi biometrik. Password yang menggunakan informasi pribadi atau pola yang mudah ditebak memiliki risiko lebih besar untuk diketahui orang lain. Karena itu, penggunaan password yang lebih kuat dan tidak mudah ditebak diperlukan untuk melindungi akun.
+Modul ini membahas dasar penggunaan perangkat digital, sistem operasi, serta pengelolaan file dan folder. Selain itu, dijelaskan pentingnya menggunakan password yang kuat untuk menjaga keamanan akun dan data pengguna.
 
 ## Modul 3 — This Is How You Get Around and Find What You're Looking For
-Informasi digital dapat ditemukan melalui browser dan mesin pencari. Hasil pencarian dapat dibuat lebih spesifik dengan menggunakan kata kunci yang sesuai. Beberapa teknik pencarian yang dipelajari antara lain menggunakan tanda kutip untuk mencari frasa tertentu, tanda minus untuk mengecualikan kata, site: untuk mencari pada website tertentu, serta filetype: untuk mencari jenis file tertentu.
-Pencarian informasi tidak hanya dilakukan melalui internet. Ketika bekerja dengan dokumen atau halaman web yang panjang, fitur Find dapat digunakan untuk menemukan kata atau bagian tertentu dengan lebih cepat.
-
-Materi juga membahas penggunaan link, cookie, dan bookmark. Link digunakan untuk menghubungkan pengguna menuju halaman atau sumber lain. Cookie dapat menyimpan informasi tertentu mengenai aktivitas pengguna pada website, sehingga pengguna perlu memahami kaitannya dengan privasi. Bookmark dapat digunakan untuk menyimpan halaman yang sering dibutuhkan agar dapat dibuka kembali dengan lebih mudah.
-Dalam menggunakan informasi atau asset dari internet, hak cipta juga perlu diperhatikan. Copyright, Creative Commons, public domain, fair use, dan open-source memiliki kondisi penggunaan yang berbeda. Karena itu, sebuah gambar, tulisan, kode, atau file yang ditemukan di internet tidak otomatis berarti bebas digunakan.
+Modul ini membahas penggunaan browser dan teknik pencarian informasi melalui internet maupun file. Selain itu, pengguna perlu memahami copyright dan public domain agar tidak sembarangan menggunakan karya atau informasi dari internet.
 
 ## Modul 4 — It Just Keeps Getting Better
-Perkembangan teknologi menghasilkan berbagai teknologi baru, termasuk Artificial Intelligence (AI) dan Large Language Model (LLM). AI dapat digunakan untuk membantu manusia dalam mengolah informasi, mengenali pola, menghasilkan konten, dan menyelesaikan pekerjaan tertentu.
-
-Walaupun AI dapat memberikan hasil dengan cepat, pengguna tetap perlu memperhatikan kemungkinan kesalahan dari hasil yang diberikan. Informasi yang dihasilkan AI perlu diperiksa dan digunakan secara bertanggung jawab, terutama ketika hasilnya berkaitan dengan keputusan atau informasi penting.
-
-Penggunaan teknologi digital juga membutuhkan etika dalam berkomunikasi. Netiquette diperlukan agar komunikasi melalui internet tetap sopan dan menghargai orang lain. Cara seseorang berkomunikasi secara online tetap mempunyai dampak terhadap orang lain meskipun komunikasi tersebut dilakukan melalui perangkat digital.
+Modul ini membahas perkembangan teknologi, khususnya AI, serta bagaimana teknologi tersebut dapat membantu aktivitas manusia. Modul ini juga menjelaskan pentingnya netiquette dan tanggung jawab dalam berkomunikasi serta menggunakan teknologi digital.
 
 ## Modul 5 — Even Though It's Digital, It Is Real, With Real Consequences
-Informasi yang dibagikan secara online dapat meninggalkan digital footprint. Aktivitas digital yang dilakukan seseorang dapat menjadi bagian dari jejak digital dan dapat memberikan dampak di kemudian hari. Karena itu, informasi pribadi perlu dipertimbangkan sebelum dibagikan melalui internet. Data pribadi yang bersifat sensitif juga perlu dilindungi. Penggunaan password yang kuat, perlindungan privasi, dan pengamanan akun merupakan bagian dari menjaga informasi pribadi.
-
-Komunikasi digital juga dapat menimbulkan masalah apabila digunakan secara tidak bertanggung jawab. Komunikasi negatif, trolling, dan cyberbullying dapat memberikan dampak kepada korban. Bentuk cyberbullying dapat berupa ancaman, penyebaran rumor, penyebaran foto atau video tanpa izin, penggunaan profil palsu, maupun tindakan mengucilkan seseorang dari kelompok. Ketika menghadapi komunikasi negatif atau cyberbullying, seseorang tidak dianjurkan membalas dengan tindakan yang sama. Bukti dapat disimpan, akun dapat diblokir, dan kejadian dapat dilaporkan kepada pihak yang sesuai.
-
-Dunia digital juga memiliki risiko cybercrime seperti fraud, phishing, pencurian identitas, password guessing, dan catfishing. Pengguna perlu berhati-hati terhadap pesan atau permintaan yang mencurigakan dan menjaga informasi pribadi maupun kredensial akun.
-Selain itu, penggunaan karya digital tanpa izin berkaitan dengan online piracy. Penggunaan software, film, musik, atau konten digital perlu memperhatikan hak pemilik dan ketentuan penggunaannya.
+Modul ini membahas pentingnya menjaga data pribadi atau PII dan memahami digital footprint. Pengguna juga perlu berhati-hati terhadap komunikasi negatif, fraud atau penipuan, serta piracy atau pembajakan yang dapat menimbulkan dampak nyata.
 
 ## Modul 6 — Learn About Anything and Everything
-Masalah teknis dapat terjadi ketika menggunakan perangkat maupun layanan digital. Troubleshooting dilakukan dengan mencari penyebab masalah secara bertahap sebelum menentukan solusi. Beberapa pemeriksaan dasar dapat dilakukan seperti memastikan perangkat mendapatkan daya, memeriksa kapasitas penyimpanan, melakukan restart, memeriksa koneksi internet, memastikan password yang digunakan benar, serta memeriksa apakah aplikasi atau sistem membutuhkan update.
-
-Masalah juga dapat terjadi ketika sebuah file tidak dapat dibuka atau format file tidak sesuai dengan aplikasi yang digunakan. Jika langkah dasar belum menyelesaikan masalah, pengguna dapat mencari bantuan melalui dokumentasi, forum komunitas, atau sumber informasi lainnya. Kemampuan digital juga perlu terus dikembangkan karena teknologi selalu berubah. Kesenjangan keterampilan dapat diatasi melalui berbagai sumber pembelajaran seperti kursus online, video pembelajaran, MOOCs, e-book, artikel, webinar, workshop, dan forum komunitas. Sumber seperti Cisco Networking Academy, OpenEDG Edube, YouTube, dan platform pembelajaran lainnya dapat digunakan untuk mengembangkan keterampilan digital.
+Modul ini membahas dasar troubleshooting ketika mengalami masalah teknis dalam menggunakan teknologi. Selain itu, pengguna perlu terus meningkatkan keterampilan digital karena perkembangan teknologi dapat menimbulkan kesenjangan kemampuan.
 
 
 # BAGIAN 3. HUBUNGAN DAN IMPLEMENTASI PADA TOPIK PROYEK
