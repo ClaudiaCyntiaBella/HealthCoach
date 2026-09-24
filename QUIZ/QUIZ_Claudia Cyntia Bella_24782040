@@ -1,16 +1,17 @@
-Laporan Kuis: Interconnecting between Digital Awareness and Application Design
+# Laporan Kuis: Interconnecting between Digital Awareness and Application Design
 
-Mata Kuliah: Internet Programming II (PIE 1516)
-Program Studi: Teknologi Rekayasa Internet (IET POLINELA)
-Nama: Claudia Cyntia Bella
-NPM: 24782040
+* **Mata Kuliah**: Internet Programming II (PIE 1516)
+* **Program Studi**: Teknologi Rekayasa Internet (IET POLINELA)
+* **Nama**: Claudia Cyntia Bella
+* **NPM**: 24782040
 
+---
 
 ## Bagian 1. Identitas dan Topik Proyek Aplikasi
 
 * **Nama Aplikasi**: HealthCoach
 * **Deskripsi Singkat & Tujuan Utama Aplikasi**: 
-  HealthCoach adalah platform aplikasi berbasis client-server yang dirancang untuk mengotomatiskan proses pencatatan dan analisis nutrisi harian pengguna melalui pendekatan visual. Masalah utama yang ingin kami selesaikan adalah kerumitan dan inefisiensi dalam pencatatan kalori manual. Melalui aplikasi ini, foto makanan yang diunggah akan diproses oleh backend Django, diidentifikasi menggunakan model kecerdasan buatan Gemini Vision, dan dicocokkan dengan database PostgreSQL. Setelah data nutrisi faktual ditarik, Gemini LLM akan memformulasikan rekomendasi gizi yang personal. Tujuan akhirnya adalah menciptakan ekosistem pemantauan kesehatan yang praktis dan cerdas dalam satu alur kerja.
+  HealthCoach adalah platform aplikasi berbasis *client-server* yang dirancang untuk mengotomatiskan proses pencatatan dan analisis nutrisi harian pengguna melalui pendekatan visual. Masalah utama yang ingin kami selesaikan adalah kerumitan dan inefisiensi dalam pencatatan kalori manual. Melalui aplikasi ini, foto makanan yang diunggah akan diproses oleh *backend* Django, diidentifikasi menggunakan model kecerdasan buatan Gemini Vision, dan dicocokkan dengan *database* PostgreSQL. Setelah data nutrisi faktual ditarik, Gemini LLM akan memformulasikan rekomendasi gizi yang personal. Tujuan akhirnya adalah menciptakan ekosistem pemantauan kesehatan yang praktis dan cerdas dalam satu alur kerja.
 * **Target Pengguna Utama**: 
   Individu yang memiliki kepedulian terhadap pola makan dan gaya hidup sehat, pegiat kebugaran (*fitness enthusiast*), serta masyarakat umum (termasuk pekerja dengan mobilitas tinggi) yang membutuhkan instrumen cepat untuk mengecek asupan kalori dan makronutrisi harian tanpa harus melakukan riset data secara manual.
 
@@ -68,11 +69,11 @@ Dalam rangka melindungi pengguna dari ancaman *social engineering* atau *phishin
 Mengingat arsitektur HealthCoach sangat bergantung pada ketersediaan *Application Programming Interface* (API) eksternal dan stabilitas jaringan (*client-server communication*), kami telah mengantisipasi terjadinya kegagalan sistem (*system failure*). Kami tidak akan memunculkan *stack trace* atau kode *error server* murni (seperti `500 Internal Server Error` atau `503 Service Unavailable`) yang akan membingungkan pengguna awam. Sebagai gantinya, *error handling* akan memunculkan panduan *troubleshooting* yang empati:
 
 * **Skenario 1: API Server Sibuk (Koneksi Timeout)**
-  > **Layanan Analisis Sedang Padat**
+  >  **Layanan Analisis Sedang Padat**
   > Saat ini server kami sedang menangani antrean yang tinggi atau koneksi Anda terputus. Mohon periksa stabilitas jaringan internet Anda, tunggu beberapa saat, lalu ketuk tombol **[Coba Ulang]**.
 * **Skenario 2: Resolusi atau Pencahayaan Foto Ekstrem**
-  > **Objek Sulit Diidentifikasi**
+  >  **Objek Sulit Diidentifikasi**
   > Kualitas gambar sangat memengaruhi akurasi AI. Makanan pada foto ini belum terlihat jelas karena buram atau kurang cahaya. Mohon pastikan pencahayaan cukup dan coba unggah kembali.
 * **Skenario 3: Null Data (Tidak Ada di Database)**
-  > **Nutrisi Belum Tersedia**
+  >  **Nutrisi Belum Tersedia**
   > AI berhasil mengidentifikasi jenis makanan Anda, namun rincian nutrisi absolutnya belum terekam di dalam basis data HealthCoach saat ini.
