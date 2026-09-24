@@ -60,7 +60,7 @@ Untuk mengurangi risiko penipuan, pengguna perlu diingatkan agar tidak memberika
 ### 6. Penanganan masalah teknis
 Jika terjadi masalah seperti koneksi internet terputus atau data gagal dimuat, HealthCoach akan menampilkan pesan yang menjelaskan masalah dengan bahasa yang mudah dipahami dan memberikan langkah sederhana yang dapat dicoba pengguna.
 Contohnya:
-Data belum berhasil dimuat. Periksa koneksi internet Anda, lalu coba kembali.
+> Data belum berhasil dimuat. Periksa koneksi internet Anda, lalu coba kembali.
 Jika masalah terjadi pada proses foto:
-Foto belum dapat dikenali. Coba gunakan foto yang lebih jelas, lalu unggah kembali.
+> Foto belum dapat dikenali. Coba gunakan foto yang lebih jelas, lalu unggah kembali.
 Pesan tersebut tidak hanya memberi tahu bahwa terjadi kesalahan, tetapi juga memberikan langkah yang dapat dilakukan pengguna untuk mencoba menyelesaikan masalah sendiri.
