@@ -1,3 +1,2 @@
-from django.db import models
+"""Model database nutrisi akan dikelola pada bagian Backend & Database."""
 
-# Create your models here.
