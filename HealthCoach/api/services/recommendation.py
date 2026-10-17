@@ -17,8 +17,9 @@ NUTRITION_UNAVAILABLE_NOTE = (
     "pada dataset HealthCoach."
 )
 UNKNOWN_RECOMMENDATION = (
-    "Makanan belum dapat diidentifikasi dengan yakin dari foto. Silakan unggah "
-    "foto yang lebih terang dan jelas dari beberapa sudut."
+    "Objek pada foto belum dapat dikenali sebagai makanan dengan yakin. "
+    "Pastikan foto menampilkan makanan yang ingin dianalisis dengan jelas, "
+    "lalu silakan coba kembali."
 )
 
 
