@@ -73,3 +73,24 @@ class RecommendationTests(SimpleTestCase):
         self.assertIn("belum tersedia", result["recommendation"])
         generate_mock.assert_not_called()
 
+    @patch("api.services.recommendation._generate_json")
+    def test_unknown_food_returns_clear_message(self, generate_mock):
+        match = NutritionMatch(
+            identified_name=None,
+            normalized_name=None,
+            identification_status="UNKNOWN",
+            matching_status="NOT_MATCHED",
+            nutrition=None,
+        )
+
+        result = generate_recommendation(match)
+
+        self.assertIn(
+            "Objek pada foto belum dapat dikenali",
+            result["recommendation"],
+        )
+        self.assertIn(
+            "silakan coba kembali",
+            result["recommendation"],
+        )
+        generate_mock.assert_not_called()
