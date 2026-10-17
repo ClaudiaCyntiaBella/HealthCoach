@@ -1,3 +1,4 @@
+
 """Konfigurasi Django untuk HealthCoach."""
 
 import os
@@ -32,7 +33,9 @@ SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "django-insecure-local-only-change-me",
 )
+
 DEBUG = env_bool("DJANGO_DEBUG", True)
+
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "127.0.0.1,localhost,testserver",
@@ -48,6 +51,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "api",
 ]
 
@@ -98,6 +102,7 @@ if RUNNING_TESTS:
             "NAME": ":memory:",
         }
     }
+
 elif os.getenv("DB_ENGINE", "sqlite").lower() == "postgresql":
     DATABASES = {
         "default": {
@@ -110,6 +115,7 @@ elif os.getenv("DB_ENGINE", "sqlite").lower() == "postgresql":
             "CONN_MAX_AGE": 60,
         }
     }
+
 else:
     DATABASES = {
         "default": {
@@ -157,8 +163,11 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
+# Issue #54 - Konfigurasi autentikasi JWT
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
@@ -184,14 +193,17 @@ CORS_ALLOWED_ORIGINS = env_list(
 
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
 GEMINI_MODEL = os.getenv(
     "GEMINI_MODEL",
     "gemini-3.6-flash",
 )
+
 GEMINI_FALLBACK_MODEL = os.getenv(
     "GEMINI_FALLBACK_MODEL",
     "gemini-3.5-flash",
 )
+
 GEMINI_TIMEOUT_SECONDS = int(
     os.getenv("GEMINI_TIMEOUT_SECONDS", "45")
 )
@@ -224,16 +236,20 @@ NUTRITION_MODEL = os.getenv(
 MAX_UPLOAD_IMAGES = int(
     os.getenv("MAX_UPLOAD_IMAGES", "5")
 )
+
 MAX_IMAGE_SIZE_MB = int(
     os.getenv("MAX_IMAGE_SIZE_MB", "5")
 )
+
 MAX_TOTAL_UPLOAD_MB = int(
     os.getenv("MAX_TOTAL_UPLOAD_MB", "20")
 )
 
+
 DATA_UPLOAD_MAX_MEMORY_SIZE = (
     MAX_TOTAL_UPLOAD_MB * 1024 * 1024
 )
+
 FILE_UPLOAD_MAX_MEMORY_SIZE = (
     MAX_IMAGE_SIZE_MB * 1024 * 1024
 )
