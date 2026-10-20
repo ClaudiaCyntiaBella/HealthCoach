@@ -1,3 +1,4 @@
+
 """Integrasi Gemini Vision untuk identifikasi makanan dari beberapa sudut."""
 
 import json
@@ -15,7 +16,6 @@ from api.exceptions import (
     GeminiTimeoutError,
     GeminiUnavailableError,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +71,12 @@ def _parse_json_response(response_text: str | None) -> dict:
         raise GeminiResponseError()
 
     cleaned = response_text.strip()
+
     if cleaned.startswith("```json"):
         cleaned = cleaned[7:]
     elif cleaned.startswith("```"):
         cleaned = cleaned[3:]
+
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
 
@@ -85,6 +87,7 @@ def _parse_json_response(response_text: str | None) -> dict:
 
     if not isinstance(result, dict):
         raise GeminiResponseError()
+
     return result
 
 
@@ -94,19 +97,29 @@ def _create_client():
 
     return genai.Client(
         api_key=settings.GEMINI_API_KEY,
-        http_options=types.HttpOptions(timeout=settings.GEMINI_TIMEOUT_SECONDS * 1000),
+        http_options=types.HttpOptions(
+            timeout=settings.GEMINI_TIMEOUT_SECONDS * 1000
+        ),
     )
 
 
 def _generate_json(contents) -> dict:
     client = _create_client()
+
     models = tuple(
         dict.fromkeys(
             model
-            for model in (settings.GEMINI_MODEL, settings.GEMINI_FALLBACK_MODEL)
+            for model in (
+                settings.GEMINI_MODEL,
+                settings.GEMINI_FALLBACK_MODEL,
+            )
             if model
         )
     )
+
+    if not models:
+        raise GeminiConfigurationError()
+
     last_error = None
 
     for index, model in enumerate(models):
@@ -117,38 +130,72 @@ def _generate_json(contents) -> dict:
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.1,
-                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                        disable=True
+                    automatic_function_calling=(
+                        types.AutomaticFunctionCallingConfig(disable=True)
                     ),
                 ),
             )
+
             return _parse_json_response(response.text)
+
         except GeminiResponseError:
             raise
-        except Exception as exc:  # SDK memiliki beberapa kelas error per versi.
+
+        except Exception as exc:
             last_error = exc
             message = str(exc).lower()
-            logger.warning("Gemini gagal menggunakan model %s: %s", model, type(exc).__name__)
+            error_type = type(exc).__name__
 
-            if "timeout" in message or "deadline" in message:
-                if index == len(models) - 1:
-                    raise GeminiTimeoutError() from exc
-            elif not any(
+            logger.warning(
+                "Gemini gagal menggunakan model %s: %s - %s",
+                model,
+                error_type,
+                str(exc)[:300],
+            )
+
+            is_timeout = (
+                "timeout" in message
+                or "deadline" in message
+                or "timeout" in error_type.lower()
+            )
+
+            is_retryable = is_timeout or any(
                 token in message
-                for token in ("429", "404", "503", "unavailable", "not_found", "resource_exhausted")
-            ):
-                break
+                for token in (
+                    "429",
+                    "500",
+                    "502",
+                    "503",
+                    "504",
+                    "unavailable",
+                    "resource_exhausted",
+                    "servererror",
+                    "readtimeout",
+                )
+            )
 
-            if index < len(models) - 1:
-                time.sleep(0.5)
+            # Beralih ke model cadangan jika model utama gagal sementara.
+            if is_retryable and index < len(models) - 1:
+                time.sleep(1)
+                continue
 
-    raise GeminiUnavailableError() from last_error
+            if is_timeout:
+                raise GeminiTimeoutError() from exc
+
+            raise GeminiUnavailableError() from exc
+
+    if last_error is not None:
+        raise GeminiUnavailableError() from last_error
+
+    raise GeminiUnavailableError()
 
 
 def identify_food(images) -> FoodIdentification:
     contents = [VISION_PROMPT]
+
     for index, image in enumerate(images, start=1):
         image.seek(0)
+
         contents.append(f"Foto sudut ke-{index}: {image.name}")
         contents.append(
             types.Part.from_bytes(
@@ -156,20 +203,25 @@ def identify_food(images) -> FoodIdentification:
                 mime_type=image.content_type,
             )
         )
+
         image.seek(0)
 
     result = _generate_json(contents)
+
     food_name = result.get("food_name")
+
     if isinstance(food_name, str):
         food_name = food_name.strip() or None
     elif food_name is not None:
         raise GeminiResponseError()
 
     confidence = str(result.get("confidence", "rendah")).lower()
+
     if confidence not in {"tinggi", "sedang", "rendah"}:
         confidence = "rendah"
 
     ingredients = result.get("ingredients", [])
+
     if not isinstance(ingredients, list):
         ingredients = []
 
@@ -179,4 +231,3 @@ def identify_food(images) -> FoodIdentification:
         ingredients=ingredients,
         notes=str(result.get("notes", "")).strip(),
     )
-
