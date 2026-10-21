@@ -42,3 +42,12 @@ yarn-error.*
 
 # Local frontend backups
 App.backup.js
+
+.env.local
+
+# macOS
+.DS_Store
+
+# Local development backups
+*.backup.js
+*.before-loading.js

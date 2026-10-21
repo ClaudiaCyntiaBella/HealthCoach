@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import {
-  Alert,
+  Modal,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -15,6 +15,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
+import { postApi } from '../services/api';
 
 export default function RegisterScreen({ onBackToLogin }) {
   const [username, setUsername] = useState('');
@@ -23,8 +24,16 @@ export default function RegisterScreen({ onBackToLogin }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
+    if (isLoading) return;
     const nextErrors = {};
 
     if (!username.trim()) {
@@ -53,13 +62,31 @@ export default function RegisterScreen({ onBackToLogin }) {
 
     if (Object.keys(nextErrors).length > 0) return;
 
-    // TODO:
-    // Kirim username, email, dan password ke Django API.
-    // Jangan membuat akun simulasi atau menganggap registrasi berhasil.
-    Alert.alert(
-      'Registrasi belum terhubung',
-      'Form sudah valid, tetapi pendaftaran akun belum terhubung ke server.'
-    );
+    setIsLoading(true);
+
+    try {
+      await postApi('/auth/register/', {
+        username: username.trim(),
+        email: email.trim(),
+        password,
+      });
+
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Registrasi berhasil!',
+        message: 'Akun HealthCoach berhasil dibuat. Yuk, mulai perjalanan hidup sehatmu!',
+      });
+    } catch (error) {
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Registrasi gagal',
+        message: error.message || 'Tidak dapat terhubung ke server.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -179,13 +206,14 @@ export default function RegisterScreen({ onBackToLogin }) {
 
               <TouchableOpacity
                 onPress={handleRegister}
+                disabled={isLoading}
                 activeOpacity={0.85}
               >
                 <LinearGradient
                   colors={['#138D76', '#2BAE96']}
                   style={styles.button}
                 >
-                  <Text style={styles.buttonText}>Daftar Akun</Text>
+                  <Text style={styles.buttonText}>{isLoading ? "Memproses..." : "Daftar Akun"}</Text>
                   <Feather name="arrow-right" size={18} color="#FFF" />
                 </LinearGradient>
               </TouchableOpacity>
@@ -197,11 +225,157 @@ export default function RegisterScreen({ onBackToLogin }) {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+
+      <Modal
+        visible={feedback.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setFeedback(prev => ({ ...prev, visible: false }))
+        }
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+
+            <View
+              style={[
+                styles.modalIconCircle,
+                feedback.type === 'success'
+                  ? styles.modalSuccessCircle
+                  : styles.modalErrorCircle,
+              ]}
+            >
+              <Feather
+                name={feedback.type === 'success' ? 'check-circle' : 'alert-circle'}
+                size={34}
+                color={feedback.type === 'success' ? '#168A72' : '#D96868'}
+              />
+            </View>
+
+            <Text style={styles.modalTitle}>
+              {feedback.title}
+            </Text>
+
+            <Text style={styles.modalDescription}>
+              {feedback.message}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalAction}
+              activeOpacity={0.85}
+              onPress={() => {
+                const wasSuccess = feedback.type === 'success';
+
+                setFeedback(prev => ({
+                  ...prev,
+                  visible: false,
+                }));
+
+                if (wasSuccess) {
+                  onBackToLogin();
+                }
+              }}
+            >
+              <LinearGradient
+                colors={['#138D76', '#2BAE96']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.modalGradient}
+              >
+                <Text style={styles.modalButtonText}>
+                  {feedback.type === 'success'
+                    ? 'Lanjut ke Login'
+                    : 'Coba Lagi'}
+                </Text>
+
+                <Feather
+                  name={feedback.type === 'success' ? 'arrow-right' : 'refresh-cw'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </LinearGradient>
+            </TouchableOpacity>
+
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(20, 49, 44, 0.34)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 26,
+    paddingTop: 32,
+    paddingBottom: 26,
+    alignItems: 'center',
+    shadowColor: '#164C40',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalSuccessCircle: {
+    backgroundColor: '#E0F5EC',
+  },
+  modalErrorCircle: {
+    backgroundColor: '#FDECEC',
+  },
+  modalTitle: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#164C40',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalDescription: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: '#69847B',
+    textAlign: 'center',
+    marginBottom: 26,
+  },
+  modalAction: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  modalGradient: {
+    minHeight: 54,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
   safeArea: {
     flex: 1,
     backgroundColor: '#F3FBF8',

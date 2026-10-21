@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
+  Modal,
   Animated,
   Easing,
   KeyboardAvoidingView,
@@ -19,12 +19,21 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
+import { postApi } from '../services/api';
 
-export default function LoginScreen({ onGoToRegister }) {
-  const [email, setEmail] = useState('');
+export default function LoginScreen({ onGoToRegister, onLoginSuccess }) {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [feedback, setFeedback] = useState({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
   const [passwordError, setPasswordError] = useState('');
 
   // Animasi latar belakang HealthCoach Aero
@@ -63,18 +72,11 @@ export default function LoginScreen({ onGoToRegister }) {
     outputRange: [0.35, 0.65],
   });
 
-  // Validasi email
-  const validateEmail = (value) => {
+  // Validasi username sesuai API Django
+  const validateUsername = (value) => {
     if (!value.trim()) {
-      return 'Email wajib diisi.';
+      return 'Username wajib diisi.';
     }
-
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailPattern.test(value.trim())) {
-      return 'Format email tidak valid.';
-    }
-
     return '';
   };
 
@@ -91,28 +93,63 @@ export default function LoginScreen({ onGoToRegister }) {
     return '';
   };
 
-  // Login belum terhubung ke backend Django
-  const handleLogin = () => {
-    const emailMessage = validateEmail(email);
+  // Autentikasi menggunakan Django REST API + JWT
+  const handleLogin = async () => {
+    if (isLoading) return;
+
+    const usernameMessage = validateUsername(username);
     const passwordMessage = validatePassword(password);
 
-    setEmailError(emailMessage);
+    setUsernameError(usernameMessage);
     setPasswordError(passwordMessage);
 
-    if (emailMessage || passwordMessage) {
-      return;
+    if (usernameMessage || passwordMessage) return;
+
+    setIsLoading(true);
+
+    try {
+      const result = await postApi('/auth/login/', {
+        username: username.trim(),
+        password,
+      });
+
+      // Mendukung respons SimpleJWT standar atau data wrapper.
+      const tokens = result.data || result;
+      const access = tokens.access;
+      const refresh = tokens.refresh;
+
+      if (
+        typeof access !== 'string' ||
+        typeof refresh !== 'string' ||
+        !access ||
+        !refresh
+      ) {
+        throw new Error(
+          'Login diterima, tetapi token JWT tidak ditemukan pada respons.'
+        );
+      }
+
+      await SecureStore.setItemAsync('hc_access_token', access);
+      await SecureStore.setItemAsync('hc_refresh_token', refresh);
+
+      setPassword('');
+
+      setFeedback({
+        visible: true,
+        type: 'success',
+        title: 'Login berhasil!',
+        message: 'Selamat datang di HealthCoach.',
+      });
+    } catch (error) {
+      setFeedback({
+        visible: true,
+        type: 'error',
+        title: 'Login gagal',
+        message: error.message || 'Tidak dapat terhubung ke server.',
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    // TODO:
-    // 1. Kirim email/username dan password ke Django API.
-    // 2. Periksa response autentikasi JWT.
-    // 3. Simpan token secara aman.
-    // 4. Arahkan ke halaman utama hanya jika login berhasil.
-
-    Alert.alert(
-      'Login belum tersedia',
-      'Layanan autentikasi sedang disiapkan. Silakan coba kembali nanti.'
-    );
   };
 
   return (
@@ -231,40 +268,40 @@ export default function LoginScreen({ onGoToRegister }) {
                 </Text>
               </View>
 
-              {/* Email */}
-              <Text style={styles.label}>Email</Text>
+              {/* Username */}
+              <Text style={styles.label}>Username</Text>
 
               <View
                 style={[
                   styles.inputRow,
-                  emailError ? styles.inputInvalid : null,
+                  usernameError ? styles.inputInvalid : null,
                 ]}
               >
                 <Feather
-                  name="mail"
+                  name="user"
                   size={18}
                   color="#7A9990"
                 />
 
                 <TextInput
                   style={styles.input}
-                  placeholder="nama@email.com"
+                  placeholder="Masukkan username"
                   placeholderTextColor="#9DAFA9"
-                  keyboardType="email-address"
+                  keyboardType="default"
                   autoCapitalize="none"
                   autoCorrect={false}
-                  autoComplete="email"
-                  value={email}
+                  autoComplete="username"
+                  value={username}
                   onChangeText={(value) => {
-                    setEmail(value);
-                    setEmailError('');
+                    setUsername(value);
+                    setUsernameError('');
                   }}
                 />
               </View>
 
-              {emailError ? (
+              {usernameError ? (
                 <Text style={styles.error}>
-                  {emailError}
+                  {usernameError}
                 </Text>
               ) : null}
 
@@ -325,6 +362,7 @@ export default function LoginScreen({ onGoToRegister }) {
               {/* Tombol Login */}
               <TouchableOpacity
                 onPress={handleLogin}
+                disabled={isLoading}
                 activeOpacity={0.85}
                 accessibilityRole="button"
               >
@@ -335,7 +373,7 @@ export default function LoginScreen({ onGoToRegister }) {
                   style={styles.button}
                 >
                   <Text style={styles.buttonText}>
-                    Masuk
+                    {isLoading ? 'Memproses...' : 'Masuk'}
                   </Text>
 
                   <Feather
@@ -379,11 +417,140 @@ export default function LoginScreen({ onGoToRegister }) {
           </ScrollView>
         </KeyboardAvoidingView>
       </LinearGradient>
+
+      <Modal
+        visible={feedback.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setFeedback(prev => ({ ...prev, visible: false }))
+        }
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View
+              style={[
+                styles.modalIconCircle,
+                feedback.type === 'success'
+                  ? styles.modalSuccessCircle
+                  : styles.modalErrorCircle,
+              ]}
+            >
+              <Feather
+                name={feedback.type === 'success' ? 'check-circle' : 'alert-circle'}
+                size={34}
+                color={feedback.type === 'success' ? '#168A72' : '#D96868'}
+              />
+            </View>
+
+            <Text style={styles.modalTitle}>{feedback.title}</Text>
+            <Text style={styles.modalDescription}>
+              {feedback.message}
+            </Text>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={styles.modalAction}
+              onPress={() => {
+                const succeeded = feedback.type === 'success';
+                setFeedback(prev => ({ ...prev, visible: false }));
+                if (succeeded && onLoginSuccess) onLoginSuccess();
+              }}
+            >
+              <LinearGradient
+                colors={['#138D76', '#2BAE96']}
+                style={styles.modalGradient}
+              >
+                <Text style={styles.modalButtonText}>
+                  {feedback.type === 'success' ? 'Lanjutkan' : 'Coba Lagi'}
+                </Text>
+                <Feather
+                  name={feedback.type === 'success' ? 'arrow-right' : 'refresh-cw'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(20, 49, 44, 0.34)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 26,
+    paddingTop: 32,
+    paddingBottom: 26,
+    alignItems: 'center',
+    shadowColor: '#164C40',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  modalIconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalSuccessCircle: {
+    backgroundColor: '#E0F5EC',
+  },
+  modalErrorCircle: {
+    backgroundColor: '#FDECEC',
+  },
+  modalTitle: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#164C40',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  modalDescription: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: '#69847B',
+    textAlign: 'center',
+    marginBottom: 26,
+  },
+  modalAction: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  modalGradient: {
+    minHeight: 54,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 16,
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
   flex: {
     flex: 1,
   },
