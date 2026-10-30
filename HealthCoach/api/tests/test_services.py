@@ -6,9 +6,16 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
 
-from api.exceptions import GeminiResponseError
+from api.exceptions import (
+    GeminiAuthenticationError,
+    GeminiConfigurationError,
+    GeminiQuotaError,
+    GeminiResponseError,
+    GeminiTimeoutError,
+)
 from api.models import Nutrition
-from api.services.gemini import _parse_json_response
+from api.services.gemini import FoodIdentification, _classify_error, _parse_json_response
+from api.services.pipeline import analyze_food_images
 from api.services.nutrition import (
     CsvNutritionRepository,
     DjangoNutritionRepository,
@@ -87,6 +94,18 @@ class NutritionRepositoryTests(SimpleTestCase):
         )
         self.assertIsNone(result.nutrition)
 
+    def test_canonical_name_matches_a_dataset_reference(self):
+        result = self.repository.find_for_identification(
+            "Nasi goreng ayam",
+            "Nasi Goreng",
+        )
+
+        self.assertEqual(result.matching_status, "MATCHED")
+        self.assertEqual(result.match_method, "CANONICAL")
+        self.assertEqual(result.identified_name, "Nasi goreng ayam")
+        self.assertEqual(result.reference_name, "Nasi Goreng")
+        self.assertEqual(result.nutrition["name"], "Nasi Goreng")
+
 
 class DjangoNutritionRepositoryTests(TestCase):
     def setUp(self):
@@ -151,6 +170,19 @@ class GeminiResponseParserTests(SimpleTestCase):
     def test_rejects_invalid_json(self):
         with self.assertRaises(GeminiResponseError):
             _parse_json_response("bukan json")
+
+    def test_classifies_provider_errors_safely(self):
+        self.assertIs(_classify_error(Exception("429 RESOURCE_EXHAUSTED")), GeminiQuotaError)
+        self.assertIs(_classify_error(Exception("400 API key not valid")), GeminiConfigurationError)
+        self.assertIs(_classify_error(TimeoutError("request timeout")), GeminiTimeoutError)
+
+    def test_classifies_provider_http_statuses_without_exposing_key(self):
+        error = Exception("provider failure")
+        error.code = 403
+        self.assertIs(_classify_error(error), GeminiAuthenticationError)
+
+        error.code = 503
+        self.assertNotEqual(_classify_error(error), GeminiConfigurationError)
 
 
 class RecommendationTests(SimpleTestCase):
@@ -243,6 +275,12 @@ class RecommendationTests(SimpleTestCase):
             "note": (
                 "Sesuaikan konsumsi dengan kebutuhan pribadi."
             ),
+            "recommendation_details": {
+                "saran": "Padukan abon dengan sayuran dan sumber karbohidrat sesuai kebutuhan makan.",
+                "alasan": "Protein merupakan salah satu zat gizi yang tercatat pada data abon.",
+                "pendamping_alternatif": "Sayur bening dapat menjadi pendamping yang relevan.",
+                "catatan_nutrisi": "Data nutrisi ditampilkan pada panel nutrisi HealthCoach.",
+            },
         }
 
         result = generate_recommendation(match)
@@ -256,3 +294,53 @@ class RecommendationTests(SimpleTestCase):
             generate_mock.return_value["nutrition"],
             nutrition,
         )
+        self.assertIn("saran", result["details"])
+
+
+class AnalysisPipelineTests(SimpleTestCase):
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_uses_canonical_name_for_dataset_matching(
+        self,
+        identify_mock,
+        repository_mock,
+        recommendation_mock,
+    ):
+        identify_mock.return_value = FoodIdentification(
+            food_name="Nasi goreng ayam",
+            canonical_food_name="Nasi Goreng",
+            confidence="tinggi",
+            ingredients=[],
+            notes="Ayam terlihat pada nasi goreng.",
+        )
+        repository_mock.return_value.find_for_identification.return_value = NutritionMatch(
+            identified_name="Nasi goreng ayam",
+            normalized_name="nasi goreng",
+            identification_status="IDENTIFIED",
+            matching_status="MATCHED",
+            nutrition={"name": "Nasi Goreng"},
+            match_method="CANONICAL",
+            reference_name="Nasi Goreng",
+        )
+        recommendation_mock.return_value = {
+            "recommendation": "Rekomendasi aman.",
+            "note": "Informasi umum.",
+            "details": {
+                "saran": "Saran.",
+                "alasan": "Alasan.",
+                "pendamping_alternatif": "Pendamping.",
+                "catatan_nutrisi": "Catatan.",
+            },
+        }
+
+        result = analyze_food_images([object()])
+
+        repository_mock.return_value.find_for_identification.assert_called_once_with(
+            "Nasi goreng ayam",
+            "Nasi Goreng",
+        )
+        self.assertEqual(result["matching"]["method"], "CANONICAL")
+        self.assertEqual(result["matching"]["reference_name"], "Nasi Goreng")
+        self.assertIn("referensi Nasi Goreng", result["note"])
+        self.assertIn("saran", result["recommendation_details"])

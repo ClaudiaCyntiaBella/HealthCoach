@@ -25,6 +25,18 @@ class GeminiTimeoutError(HealthCoachServiceError):
     public_message = "Layanan AI melewati batas waktu. Silakan coba lagi."
 
 
+class GeminiQuotaError(HealthCoachServiceError):
+    code = "GEMINI_QUOTA_EXCEEDED"
+    status_code = 429
+    public_message = "Batas penggunaan layanan AI sedang tercapai. Silakan coba lagi nanti."
+
+
+class GeminiAuthenticationError(HealthCoachServiceError):
+    code = "GEMINI_ACCESS_DENIED"
+    status_code = 502
+    public_message = "Akses ke layanan AI ditolak. Periksa izin API key pada konfigurasi server."
+
+
 class GeminiResponseError(HealthCoachServiceError):
     code = "GEMINI_INVALID_RESPONSE"
     status_code = 502

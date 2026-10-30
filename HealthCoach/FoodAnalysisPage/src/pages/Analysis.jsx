@@ -22,9 +22,10 @@ function Analysis() {
   const [photos, setPhotos] = useState([])
   const [status, setStatus] = useState('upload')
   const [errorMessage, setErrorMessage] = useState('')
+  const [analysisResult, setAnalysisResult] = useState(null)
 
   const MAX_PHOTOS = 3
-  const MAX_SIZE = 10 * 1024 * 1024
+  const MAX_SIZE = 5 * 1024 * 1024
 
   const handleChooseFile = () => {
     fileInputRef.current?.click()
@@ -58,7 +59,7 @@ function Analysis() {
       }
 
       if (file.size > MAX_SIZE) {
-        validationError = 'Ukuran setiap foto maksimal 10 MB.'
+        validationError = 'Ukuran setiap foto maksimal 5 MB.'
         continue
       }
 
@@ -96,7 +97,7 @@ function Analysis() {
     setErrorMessage('')
   }
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!photos.length) {
       setErrorMessage('Tambahkan minimal satu foto makanan terlebih dahulu.')
       return
@@ -105,9 +106,35 @@ function Analysis() {
     setErrorMessage('')
     setStatus('loading')
 
-    setTimeout(() => {
+    const formData = new FormData()
+    photos.forEach((photo) => formData.append('images', photo.file))
+
+    try {
+      const response = await fetch(
+        'http://127.0.0.1:8000/api/v1/analyze/',
+        {
+          method: 'POST',
+          body: formData,
+        },
+      )
+      const payload = await response.json()
+
+      if (!response.ok || !payload.success) {
+        throw new Error(
+          payload?.error?.message || 'Analisis makanan tidak dapat diproses.',
+        )
+      }
+
+      setAnalysisResult(payload.data)
       setStatus('result')
-    }, 2200)
+    } catch (error) {
+      setStatus('upload')
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Koneksi ke backend gagal. Pastikan server Django berjalan.',
+      )
+    }
   }
 
   const resetAnalysis = () => {
@@ -118,11 +145,19 @@ function Analysis() {
     setPhotos([])
     setStatus('upload')
     setErrorMessage('')
+    setAnalysisResult(null)
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
+
+  const identification = analysisResult?.identification || {}
+  const matching = analysisResult?.matching || {}
+  const nutrition = analysisResult?.nutrition
+  const recommendationDetails = analysisResult?.recommendation_details
+  const foodName = identification.food_name || 'Makanan belum dikenali'
+  const isMatched = matching.status === 'MATCHED' && nutrition
 
   return (
     <main className="an-page">
@@ -225,23 +260,44 @@ function Analysis() {
               <div>
                 <span className="an-success-badge">
                   <CircleCheck size={15} />
-                  Makanan berhasil dikenali
+                  {identification.identification_status === 'IDENTIFIED'
+                    ? 'Makanan berhasil dikenali'
+                    : 'Makanan belum dapat dikenali'}
                 </span>
 
-                <span className="an-demo-badge">
-                  Data sementara
-                </span>
+                {matching.method === 'CANONICAL' && (
+                  <span className="an-demo-badge">Referensi makanan dasar</span>
+                )}
               </div>
 
-              <h2>Nasi Goreng</h2>
+              <h2>{foodName}</h2>
 
               <p>
-                Contoh hasil tampilan sebelum terhubung dengan
-                Gemini Vision dan database nutrisi.
+                {identification.notes || (
+                  isMatched
+                    ? 'Informasi nutrisi berasal dari dataset HealthCoach.'
+                    : 'Data nutrisi makanan ini belum tersedia pada dataset HealthCoach.'
+                )}
               </p>
             </div>
 
             <div className="an-portion-card">
+              <div className="an-portion-icon">
+                <Scale size={20} />
+              </div>
+
+              <div>
+                <span>Referensi data nutrisi</span>
+                <strong>{matching.reference_name || '-'}</strong>
+                <small>
+                  {matching.method === 'CANONICAL'
+                    ? 'Nama dasar digunakan karena variasi makanan tidak tersedia persis di dataset.'
+                    : 'Data hanya ditampilkan jika nama ditemukan pada dataset.'}
+                </small>
+              </div>
+            </div>
+
+            <div className="an-portion-card an-demo-portion-card">
               <div className="an-portion-icon">
                 <Scale size={20} />
               </div>
@@ -259,28 +315,28 @@ function Analysis() {
               <div>
                 <Flame size={19} />
                 <span>Kalori</span>
-                <strong>350</strong>
+                <strong>{nutrition?.calories || '-'}</strong>
                 <small>kcal</small>
               </div>
 
               <div>
                 <Beef size={19} />
                 <span>Protein</span>
-                <strong>12</strong>
+                <strong>{nutrition?.proteins || '-'}</strong>
                 <small>g</small>
               </div>
 
               <div>
                 <Wheat size={19} />
                 <span>Karbohidrat</span>
-                <strong>48</strong>
+                <strong>{nutrition?.carbohydrate || '-'}</strong>
                 <small>g</small>
               </div>
 
               <div>
                 <Droplets size={19} />
                 <span>Lemak</span>
-                <strong>12</strong>
+                <strong>{nutrition?.fat || '-'}</strong>
                 <small>g</small>
               </div>
             </div>
@@ -293,12 +349,22 @@ function Analysis() {
               <div>
                 <strong>Rekomendasi HealthCoach</strong>
 
-                <p>
-                  Tambahkan sayuran untuk membantu meningkatkan
-                  asupan serat dan menjaga keseimbangan makanan.
-                </p>
+                {recommendationDetails ? (
+                  <dl className="an-recommendation-details">
+                    <div><dt>Saran</dt><dd>{recommendationDetails.saran}</dd></div>
+                    <div><dt>Alasan</dt><dd>{recommendationDetails.alasan}</dd></div>
+                    <div><dt>Pendamping atau alternatif</dt><dd>{recommendationDetails.pendamping_alternatif}</dd></div>
+                    <div><dt>Catatan nutrisi</dt><dd>{recommendationDetails.catatan_nutrisi}</dd></div>
+                  </dl>
+                ) : (
+                  <p>{analysisResult?.recommendation || analysisResult?.note}</p>
+                )}
               </div>
             </div>
+
+            {analysisResult?.note && (
+              <p className="an-result-note">{analysisResult.note}</p>
+            )}
 
             <button
               className="an-primary-button an-full-button"
@@ -335,7 +401,7 @@ function Analysis() {
                 <strong>Pilih Foto Makanan</strong>
 
                 <span>
-                  JPG, PNG, atau WEBP • Maksimal 10 MB per foto
+                  JPG, PNG, atau WEBP • Maksimal 5 MB per foto
                 </span>
               </button>
             ) : (

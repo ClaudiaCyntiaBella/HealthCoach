@@ -23,6 +23,22 @@ UNKNOWN_RECOMMENDATION = (
 )
 
 
+def _fallback_details(match: NutritionMatch) -> dict:
+    if match.identification_status == "UNKNOWN":
+        return {
+            "saran": "Ambil ulang foto dengan makanan terlihat utuh dan pencahayaan cukup.",
+            "alasan": "Sistem belum cukup yakin mengenali objek pada foto sebagai makanan.",
+            "pendamping_alternatif": "Tidak tersedia sebelum makanan dapat diidentifikasi.",
+            "catatan_nutrisi": "Tidak ada data nutrisi yang ditampilkan untuk hasil ini.",
+        }
+    return {
+        "saran": "Periksa kembali nama makanan atau gunakan foto yang lebih jelas.",
+        "alasan": "Makanan teridentifikasi, tetapi belum memiliki kecocokan pada dataset nutrisi HealthCoach.",
+        "pendamping_alternatif": "Tidak diberikan karena tidak ada dasar data nutrisi yang tervalidasi.",
+        "catatan_nutrisi": NUTRITION_UNAVAILABLE_NOTE,
+    }
+
+
 def _build_prompt(match: NutritionMatch) -> str:
     official_input = {
         "food_name": match.identified_name,
@@ -42,11 +58,15 @@ Aturan:
    persis dari data resmi.
 2. Recommendation harus Bahasa Indonesia, singkat, berupa informasi umum,
    bukan diagnosis atau pengganti tenaga kesehatan.
-3. Recommendation wajib diawali "Berdasarkan data nutrisi dataset HealthCoach,".
-4. Jangan tulis angka pada recommendation atau note. Angka hanya boleh berada
+3. Buat rekomendasi kontekstual untuk food_name ini, bukan template umum. Gunakan
+   nama makanan dan perbandingan relatif antar nilai nutrition yang tersedia.
+4. Jangan melarang konsumsi kecuali ada alasan yang langsung didukung data.
+5. Jangan tulis angka pada teks rekomendasi. Angka hanya boleh berada
    di objek nutrition.
-5. Kembalikan JSON valid saja dengan kunci: food_name,
-   identification_status, matching_status, nutrition, recommendation, note.
+6. Kembalikan JSON valid saja dengan kunci: food_name, identification_status,
+   matching_status, nutrition, recommendation, note, recommendation_details.
+   recommendation_details harus berisi saran, alasan, pendamping_alternatif,
+   catatan_nutrisi. Setiap nilai berupa teks Bahasa Indonesia yang praktis.
 """.strip()
 
 
@@ -55,10 +75,12 @@ def _fallback_recommendation(match: NutritionMatch) -> dict:
         return {
             "recommendation": UNKNOWN_RECOMMENDATION,
             "note": "Sistem tidak memberikan informasi nutrisi untuk hasil UNKNOWN.",
+            "details": _fallback_details(match),
         }
     return {
         "recommendation": NUTRITION_UNAVAILABLE_RECOMMENDATION,
         "note": NUTRITION_UNAVAILABLE_NOTE,
+        "details": _fallback_details(match),
     }
 
 
@@ -71,11 +93,15 @@ def _validate(match: NutritionMatch, result: dict) -> None:
     }
     if any(result.get(key) != value for key, value in expected.items()):
         raise GeminiResponseError()
-    if not str(result.get("recommendation", "")).startswith(
-        "Berdasarkan data nutrisi dataset HealthCoach,"
-    ):
+    details = result.get("recommendation_details")
+    if not isinstance(details, dict) or set(details) != {
+        "saran", "alasan", "pendamping_alternatif", "catatan_nutrisi"
+    }:
         raise GeminiResponseError()
-    if re.search(r"\d", f"{result.get('recommendation', '')} {result.get('note', '')}"):
+    free_text = " ".join(str(value).strip() for value in details.values())
+    if not all(str(value).strip() for value in details.values()):
+        raise GeminiResponseError()
+    if re.search(r"\d", f"{result.get('recommendation', '')} {result.get('note', '')} {free_text}"):
         raise GeminiResponseError()
 
 
@@ -88,5 +114,6 @@ def generate_recommendation(match: NutritionMatch) -> dict:
     return {
         "recommendation": result["recommendation"],
         "note": str(result.get("note", "")),
+        "details": result["recommendation_details"],
     }
 

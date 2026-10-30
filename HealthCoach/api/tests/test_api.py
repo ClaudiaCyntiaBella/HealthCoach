@@ -7,6 +7,8 @@ from django.urls import reverse
 from PIL import Image
 from rest_framework.test import APIClient
 
+from api.exceptions import GeminiAuthenticationError, GeminiQuotaError
+
 
 def make_image(name="food.jpg", image_format="JPEG", size=(20, 20)):
     buffer = BytesIO()
@@ -46,6 +48,22 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
         self.assertEqual(body["error"]["code"], "GEMINI_NOT_CONFIGURED")
         self.assertNotIn("API_KEY", body["error"]["message"])
 
+    @patch("api.views.analyze_food_images", side_effect=GeminiQuotaError())
+    def test_quota_error_keeps_its_http_status(self, _analyze_mock):
+        response = self.client.post(
+            reverse("api:analyze"), data={"images": [make_image()]}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["error"]["code"], "GEMINI_QUOTA_EXCEEDED")
+
+    @patch("api.views.analyze_food_images", side_effect=GeminiAuthenticationError())
+    def test_access_error_is_not_reported_as_not_configured(self, _analyze_mock):
+        response = self.client.post(
+            reverse("api:analyze"), data={"images": [make_image()]}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"]["code"], "GEMINI_ACCESS_DENIED")
+
     @override_settings(MAX_UPLOAD_IMAGES=2)
     def test_rejects_too_many_images(self):
         response = self.client.post(
@@ -80,6 +98,12 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
                 "image": "",
             },
             "recommendation": "Berdasarkan data nutrisi dataset HealthCoach, pilih porsi sesuai kebutuhan.",
+            "recommendation_details": {
+                "saran": "Tambahkan sayuran sebagai pelengkap.",
+                "alasan": "Data nutrisi tersedia pada dataset.",
+                "pendamping_alternatif": "Sayuran segar dapat menjadi pilihan.",
+                "catatan_nutrisi": "Lihat panel nutrisi untuk data lengkap.",
+            },
             "note": "Informasi umum.",
         }
 
@@ -103,6 +127,7 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
             "matching": {},
             "nutrition": None,
             "recommendation": "",
+            "recommendation_details": {},
             "note": "",
         }
         response = self.client.post(

@@ -627,6 +627,17 @@
   background: #eff8fb;
 }
 
+.an-demo-portion-card {
+  display: none;
+}
+
+.an-result-note {
+  margin: 12px 0 0;
+  color: #718b98;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .an-portion-icon {
   width: 42px;
   height: 42px;
@@ -752,6 +763,30 @@
 
   font-size: 11px;
   line-height: 1.55;
+}
+
+.an-recommendation-details {
+  display: grid;
+  gap: 7px;
+  margin: 6px 0 0;
+}
+
+.an-recommendation-details div {
+  display: grid;
+  gap: 1px;
+}
+
+.an-recommendation-details dt {
+  color: #286b4e;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.an-recommendation-details dd {
+  margin: 0;
+  color: #55796a;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* RESPONSIVE */

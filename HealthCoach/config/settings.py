@@ -208,6 +208,10 @@ GEMINI_TIMEOUT_SECONDS = int(
     os.getenv("GEMINI_TIMEOUT_SECONDS", "45")
 )
 
+# Retry dibatasi untuk gangguan sementara (misalnya 503), bukan untuk kuota.
+GEMINI_MAX_RETRIES = max(0, int(os.getenv("GEMINI_MAX_RETRIES", "1")))
+GEMINI_RETRY_DELAY_SECONDS = max(0, float(os.getenv("GEMINI_RETRY_DELAY_SECONDS", "1")))
+
 
 dataset_setting = Path(
     os.getenv(

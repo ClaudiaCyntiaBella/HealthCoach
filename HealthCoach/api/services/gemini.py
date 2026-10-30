@@ -11,7 +11,9 @@ from google import genai
 from google.genai import types
 
 from api.exceptions import (
+    GeminiAuthenticationError,
     GeminiConfigurationError,
+    GeminiQuotaError,
     GeminiResponseError,
     GeminiTimeoutError,
     GeminiUnavailableError,
@@ -28,14 +30,19 @@ Jangan mengarang nilai nutrisi, diagnosis, atau rekomendasi diet.
 
 Tugas:
 1. Tentukan nama makanan utama dalam Bahasa Indonesia.
-2. Catat komponen yang benar-benar terlihat dan yang hanya diperkirakan.
-3. Berikan keyakinan: tinggi, sedang, atau rendah.
-4. Jika objek bukan makanan atau tidak cukup jelas, gunakan food_name null dan
+2. Tentukan nama makanan dasar bila makanan merupakan variasi dari makanan
+   utama. Contoh: untuk "nasi goreng ayam", food_name adalah "Nasi goreng ayam"
+   dan canonical_food_name adalah "Nasi Goreng". Gunakan null jika tidak yakin;
+   jangan menebak nama makanan dasar.
+3. Catat komponen yang benar-benar terlihat dan yang hanya diperkirakan.
+4. Berikan keyakinan: tinggi, sedang, atau rendah.
+5. Jika objek bukan makanan atau tidak cukup jelas, gunakan food_name null dan
    jelaskan alasannya pada notes.
 
 Kembalikan JSON valid saja:
 {
   "food_name": "nama makanan atau null",
+  "canonical_food_name": "nama makanan dasar atau null",
   "confidence": "tinggi | sedang | rendah",
   "ingredients": [
     {"name": "nama bahan", "visible": true, "confidence": "tinggi"}
@@ -48,6 +55,7 @@ Kembalikan JSON valid saja:
 @dataclass(frozen=True)
 class FoodIdentification:
     food_name: str | None
+    canonical_food_name: str | None
     confidence: str
     ingredients: list[dict]
     notes: str
@@ -59,6 +67,7 @@ class FoodIdentification:
     def to_dict(self) -> dict:
         return {
             "food_name": self.food_name,
+            "canonical_food_name": self.canonical_food_name,
             "identification_status": self.status,
             "confidence": self.confidence,
             "ingredients": self.ingredients,
@@ -103,6 +112,39 @@ def _create_client():
     )
 
 
+def _classify_error(exc: Exception):
+    """Kembalikan kategori kesalahan tanpa membocorkan detail provider."""
+    message = str(exc).lower()
+    error_type = type(exc).__name__.lower()
+    status_code = getattr(exc, "code", None)
+
+    if status_code == 429 or any(
+        token in message for token in ("429", "resource_exhausted", "quota")
+    ):
+        return GeminiQuotaError
+    if status_code == 400 or any(
+        token in message for token in ("invalid api key", "api key not valid", "400")
+    ):
+        return GeminiConfigurationError
+    if status_code in {401, 403} or any(
+        token in message for token in ("401", "403", "permission_denied", "unauthenticated")
+    ):
+        return GeminiAuthenticationError
+    if "timeout" in message or "deadline" in message or "timeout" in error_type:
+        return GeminiTimeoutError
+    return GeminiUnavailableError
+
+
+def _is_temporary_error(exc: Exception) -> bool:
+    if getattr(exc, "code", None) in {500, 502, 503, 504}:
+        return True
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in ("500", "502", "503", "504", "unavailable", "servererror")
+    )
+
+
 def _generate_json(contents) -> dict:
     client = _create_client()
 
@@ -122,67 +164,41 @@ def _generate_json(contents) -> dict:
 
     last_error = None
 
-    for index, model in enumerate(models):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1,
-                    automatic_function_calling=(
-                        types.AutomaticFunctionCallingConfig(disable=True)
+    for model in models:
+        for attempt in range(settings.GEMINI_MAX_RETRIES + 1):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.1,
+                        automatic_function_calling=(
+                            types.AutomaticFunctionCallingConfig(disable=True)
+                        ),
                     ),
-                ),
-            )
-
-            return _parse_json_response(response.text)
-
-        except GeminiResponseError:
-            raise
-
-        except Exception as exc:
-            last_error = exc
-            message = str(exc).lower()
-            error_type = type(exc).__name__
-
-            logger.warning(
-                "Gemini gagal menggunakan model %s: %s - %s",
-                model,
-                error_type,
-                str(exc)[:300],
-            )
-
-            is_timeout = (
-                "timeout" in message
-                or "deadline" in message
-                or "timeout" in error_type.lower()
-            )
-
-            is_retryable = is_timeout or any(
-                token in message
-                for token in (
-                    "429",
-                    "500",
-                    "502",
-                    "503",
-                    "504",
-                    "unavailable",
-                    "resource_exhausted",
-                    "servererror",
-                    "readtimeout",
                 )
-            )
-
-            # Beralih ke model cadangan jika model utama gagal sementara.
-            if is_retryable and index < len(models) - 1:
-                time.sleep(1)
-                continue
-
-            if is_timeout:
-                raise GeminiTimeoutError() from exc
-
-            raise GeminiUnavailableError() from exc
+                return _parse_json_response(response.text)
+            except GeminiResponseError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                error_class = _classify_error(exc)
+                logger.warning(
+                    "Gemini gagal: model=%s attempt=%d type=%s http_status=%s provider_status=%s",
+                    model,
+                    attempt + 1,
+                    type(exc).__name__,
+                    getattr(exc, "code", None),
+                    getattr(exc, "status", None),
+                )
+                # Kesalahan konfigurasi, akses, kuota, dan timeout tidak diulang.
+                if error_class is not GeminiUnavailableError:
+                    raise error_class() from exc
+                if _is_temporary_error(exc) and attempt < settings.GEMINI_MAX_RETRIES:
+                    time.sleep(settings.GEMINI_RETRY_DELAY_SECONDS)
+                    continue
+                break
 
     if last_error is not None:
         raise GeminiUnavailableError() from last_error
@@ -208,12 +224,16 @@ def identify_food(images) -> FoodIdentification:
 
     result = _generate_json(contents)
 
-    food_name = result.get("food_name")
-
-    if isinstance(food_name, str):
-        food_name = food_name.strip() or None
-    elif food_name is not None:
+    def optional_food_name(key: str) -> str | None:
+        value = result.get(key)
+        if isinstance(value, str):
+            return value.strip() or None
+        if value is None:
+            return None
         raise GeminiResponseError()
+
+    food_name = optional_food_name("food_name")
+    canonical_food_name = optional_food_name("canonical_food_name")
 
     confidence = str(result.get("confidence", "rendah")).lower()
 
@@ -227,6 +247,7 @@ def identify_food(images) -> FoodIdentification:
 
     return FoodIdentification(
         food_name=food_name,
+        canonical_food_name=canonical_food_name,
         confidence=confidence,
         ingredients=ingredients,
         notes=str(result.get("notes", "")).strip(),
