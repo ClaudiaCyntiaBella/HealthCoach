@@ -86,13 +86,31 @@ class NutritionRepositoryTests(SimpleTestCase):
         result = self.repository.find_exact("nASI gorEng")
 
         self.assertEqual(result.matching_status, "MATCHED")
+        self.assertEqual(result.match_method, "EXACT")
         self.assertEqual(
             result.nutrition["calories"],
             "276.0",
         )
 
-    def test_not_matched_does_not_invent_nutrition(self):
-        result = self.repository.find_exact("Pizza")
+    def test_canonical_match(self):
+        result = self.repository.find_for_identification(
+            "Nasi Goreng Ayam",
+            "Nasi Goreng",
+        )
+
+        self.assertEqual(result.matching_status, "MATCHED")
+        self.assertEqual(result.match_method, "CANONICAL")
+        self.assertEqual(result.reference_name, "Nasi Goreng")
+        self.assertEqual(
+            result.nutrition["calories"],
+            "276.0",
+        )
+
+    def test_canonical_not_found_does_not_invent_nutrition(self):
+        result = self.repository.find_for_identification(
+            "Soto Ayam",
+            "Makanan Tidak Ada",
+        )
 
         self.assertEqual(
             result.matching_status,
@@ -141,12 +159,30 @@ class DjangoNutritionRepositoryTests(TestCase):
             result.matching_status,
             "MATCHED",
         )
+        self.assertEqual(result.match_method, "EXACT")
         self.assertEqual(result.normalized_name, "abon")
         self.assertEqual(result.duplicate_count, 1)
         self.assertEqual(
             result.nutrition["name"],
             "Abon",
         )
+        self.assertEqual(
+            result.nutrition["calories"],
+            "212.0",
+        )
+
+    def test_canonical_match_returns_database_nutrition(self):
+        result = self.repository.find_for_identification(
+            "Abon Pedas",
+            "Abon",
+        )
+
+        self.assertEqual(
+            result.matching_status,
+            "MATCHED",
+        )
+        self.assertEqual(result.match_method, "CANONICAL")
+        self.assertEqual(result.reference_name, "Abon")
         self.assertEqual(
             result.nutrition["calories"],
             "212.0",
