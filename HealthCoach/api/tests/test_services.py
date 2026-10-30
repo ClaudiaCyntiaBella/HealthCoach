@@ -21,6 +21,11 @@ from api.services.gemini import (
     _parse_json_response,
     identify_food,
 )
+from api.services.estimation import (
+    NutritionEstimation,
+    _normalise_nutrition,
+    estimate_nutrition,
+)
 from api.services.pipeline import analyze_food_images
 from api.services.nutrition import (
     CsvNutritionRepository,
@@ -290,6 +295,64 @@ class FoodIdentificationTests(SimpleTestCase):
         self.assertEqual(result.status, "UNKNOWN")
 
 
+class NutritionEstimationTests(SimpleTestCase):
+    def _identification(self, confidence="tinggi"):
+        return FoodIdentification(
+            food_name="Mi Kuah Rumahan",
+            canonical_food_name=None,
+            confidence=confidence,
+            ingredients=[{"name": "mi", "visible": True, "confidence": "tinggi"}],
+            notes="Kuah dan mi terlihat.",
+        )
+
+    @patch("api.services.estimation._generate_json")
+    def test_estimation_is_available_only_from_ai_response(self, generate_mock):
+        generate_mock.return_value = {
+            "estimate_available": True,
+            "nutrition": {"calories": 320, "proteins": 10, "carbohydrate": 48, "fat": 9},
+            "estimation_note": "Porsi dan bahan tambahan dapat mengubah hasil.",
+        }
+
+        result = estimate_nutrition(self._identification())
+
+        self.assertTrue(result.is_available)
+        self.assertEqual(result.nutrition["calories"], "320")
+        self.assertNotIn("id", result.nutrition)
+        generate_mock.assert_called_once()
+
+    @patch("api.services.estimation._generate_json")
+    def test_estimation_is_not_generated_for_low_confidence_or_unknown(self, generate_mock):
+        low_confidence = estimate_nutrition(self._identification("rendah"))
+        unknown = estimate_nutrition(
+            FoodIdentification(None, None, "rendah", [], "Objek tidak jelas.")
+        )
+
+        self.assertFalse(low_confidence.is_available)
+        self.assertFalse(unknown.is_available)
+        generate_mock.assert_not_called()
+
+    @patch("api.services.estimation._generate_json")
+    def test_estimation_returns_no_numbers_when_visual_context_is_insufficient(self, generate_mock):
+        generate_mock.return_value = {
+            "estimate_available": False,
+            "nutrition": None,
+            "estimation_note": "Porsi tidak terlihat cukup jelas.",
+        }
+
+        result = estimate_nutrition(self._identification("sedang"))
+
+        self.assertIsNone(result.nutrition)
+
+    def test_normalise_nutrition_rejects_non_finite_and_boolean_numbers(self):
+        valid = {"calories": 320, "proteins": 10.5, "carbohydrate": 48, "fat": 9}
+        self.assertEqual(_normalise_nutrition(valid)["proteins"], "10.5")
+
+        for invalid_value in (float("nan"), float("inf"), float("-inf"), True):
+            invalid = {"calories": invalid_value, "proteins": 10, "carbohydrate": 48, "fat": 9}
+            with self.assertRaises(GeminiResponseError):
+                _normalise_nutrition(invalid)
+
+
 class RecommendationTests(SimpleTestCase):
     @patch(
         "api.services.recommendation._generate_json"
@@ -438,8 +501,33 @@ class RecommendationTests(SimpleTestCase):
 
         self.assertEqual(generate_mock.call_count, len(cases))
 
+    @patch("api.services.recommendation._generate_json")
+    def test_estimated_nutrition_marks_recommendation_as_ai_estimate(self, generate_mock):
+        nutrition = {"calories": "320", "proteins": "10", "carbohydrate": "48", "fat": "9"}
+        match = NutritionMatch("Mi Kuah Rumahan", "mi kuah rumahan", "IDENTIFIED", "NOT_MATCHED", None)
+        generate_mock.return_value = {
+            "food_name": "Mi Kuah Rumahan",
+            "identification_status": "IDENTIFIED",
+            "matching_status": "NOT_MATCHED",
+            "nutrition": nutrition,
+            "recommendation": "Pilih pendamping sesuai kebutuhan makan.",
+            "note": "Informasi umum.",
+            "recommendation_details": {
+                "saran": "Tambahkan sayuran sebagai pelengkap.",
+                "alasan": "Saran memakai nilai estimasi AI.",
+                "pendamping_alternatif": "Sayuran rebus dapat menjadi pilihan.",
+                "catatan_nutrisi": "Nilai merupakan estimasi AI.",
+            },
+        }
+
+        result = generate_recommendation(match, nutrition, "AI_ESTIMATED")
+
+        self.assertIn("estimasi AI", result["note"])
+        self.assertIn("AI_ESTIMATED", generate_mock.call_args.args[0])
+
 
 class AnalysisPipelineTests(SimpleTestCase):
+    @patch("api.services.pipeline.estimate_nutrition")
     @patch("api.services.pipeline.generate_recommendation")
     @patch("api.services.pipeline.get_nutrition_repository")
     @patch("api.services.pipeline.identify_food")
@@ -448,6 +536,7 @@ class AnalysisPipelineTests(SimpleTestCase):
         identify_mock,
         repository_mock,
         recommendation_mock,
+        estimate_mock,
     ):
         identify_mock.return_value = FoodIdentification(
             food_name="Nasi goreng ayam",
@@ -486,3 +575,54 @@ class AnalysisPipelineTests(SimpleTestCase):
         self.assertEqual(result["matching"]["reference_name"], "Nasi Goreng")
         self.assertIn("referensi Nasi Goreng", result["note"])
         self.assertIn("saran", result["recommendation_details"])
+        self.assertEqual(result["nutrition_source"], "DATASET")
+        estimate_mock.assert_not_called()
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_not_matched_uses_ai_estimate_without_changing_match_status(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        identification = FoodIdentification(
+            "Mi Kuah Rumahan", None, "tinggi", [], "Mi dan kuah terlihat."
+        )
+        identify_mock.return_value = identification
+        repository_mock.return_value.find_for_identification.return_value = NutritionMatch(
+            "Mi Kuah Rumahan", "mi kuah rumahan", "IDENTIFIED", "NOT_MATCHED", None
+        )
+        estimated_nutrition = {"calories": "320", "proteins": "10", "carbohydrate": "48", "fat": "9"}
+        estimate_mock.return_value = NutritionEstimation(estimated_nutrition, "Porsi dapat berbeda.")
+        recommendation_mock.return_value = {"recommendation": "Saran estimasi.", "note": "Estimasi AI.", "details": {}}
+
+        result = analyze_food_images([object()])
+
+        self.assertEqual(result["matching"]["status"], "NOT_MATCHED")
+        self.assertEqual(result["nutrition_source"], "AI_ESTIMATED")
+        self.assertEqual(result["nutrition"], estimated_nutrition)
+        self.assertIn("tidak berasal dari dataset", result["estimation_note"])
+        recommendation_mock.assert_called_once_with(
+            repository_mock.return_value.find_for_identification.return_value,
+            nutrition=estimated_nutrition,
+            nutrition_source="AI_ESTIMATED",
+        )
+
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_unknown_does_not_request_ai_estimation(
+        self, identify_mock, repository_mock, recommendation_mock, estimate_mock
+    ):
+        identify_mock.return_value = FoodIdentification(None, None, "rendah", [], "Objek tidak jelas.")
+        repository_mock.return_value.find_for_identification.return_value = NutritionMatch(
+            None, None, "UNKNOWN", "NOT_MATCHED", None
+        )
+        recommendation_mock.return_value = {"recommendation": "Unggah ulang.", "note": "", "details": {}}
+
+        result = analyze_food_images([object()])
+
+        self.assertEqual(result["nutrition_source"], "UNAVAILABLE")
+        self.assertIsNone(result["nutrition"])
+        estimate_mock.assert_not_called()

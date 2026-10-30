@@ -39,23 +39,25 @@ def _fallback_details(match: NutritionMatch) -> dict:
     }
 
 
-def _build_prompt(match: NutritionMatch) -> str:
+def _build_prompt(match: NutritionMatch, nutrition: dict, nutrition_source: str) -> str:
     official_input = {
         "food_name": match.identified_name,
         "identification_status": match.identification_status,
         "matching_status": match.matching_status,
-        "nutrition": match.nutrition,
+        "nutrition": nutrition,
+        "nutrition_source": nutrition_source,
     }
     return f"""
-Anda adalah asisten informasi nutrisi HealthCoach. Gunakan HANYA data resmi
-sistem berikut. Jangan menghitung, mengubah, atau menebak nilai nutrisi.
+Anda adalah asisten informasi nutrisi HealthCoach. Gunakan HANYA konteks sistem
+berikut. Jangan menghitung, mengubah, atau menebak nilai nutrisi.
 
-DATA RESMI SISTEM:
+KONTEKS SISTEM:
 {json.dumps(official_input, ensure_ascii=False, indent=2)}
 
 Aturan:
 1. Salin food_name, identification_status, matching_status, dan objek nutrition
-   persis dari data resmi.
+   persis dari konteks sistem. Jika nutrition_source AI_ESTIMATED, sebutkan bahwa
+   rekomendasi bersifat estimasi AI dan bukan data resmi dataset.
 2. Recommendation harus Bahasa Indonesia, singkat, berupa informasi umum,
    bukan diagnosis atau pengganti tenaga kesehatan.
 3. Buat rekomendasi kontekstual untuk food_name ini, bukan template umum. Gunakan
@@ -84,12 +86,12 @@ def _fallback_recommendation(match: NutritionMatch) -> dict:
     }
 
 
-def _validate(match: NutritionMatch, result: dict) -> None:
+def _validate(match: NutritionMatch, nutrition: dict, result: dict) -> None:
     expected = {
         "food_name": match.identified_name,
         "identification_status": match.identification_status,
         "matching_status": match.matching_status,
-        "nutrition": match.nutrition,
+        "nutrition": nutrition,
     }
     if any(result.get(key) != value for key, value in expected.items()):
         raise GeminiResponseError()
@@ -105,15 +107,26 @@ def _validate(match: NutritionMatch, result: dict) -> None:
         raise GeminiResponseError()
 
 
-def generate_recommendation(match: NutritionMatch) -> dict:
-    if match.matching_status != "MATCHED":
+def generate_recommendation(
+    match: NutritionMatch,
+    nutrition: dict | None = None,
+    nutrition_source: str = "DATASET",
+) -> dict:
+    if nutrition_source not in {"DATASET", "AI_ESTIMATED", "UNAVAILABLE"}:
+        raise GeminiResponseError()
+    if nutrition_source == "DATASET":
+        nutrition = match.nutrition
+    if nutrition is None:
         return _fallback_recommendation(match)
 
-    result = _generate_json(_build_prompt(match))
-    _validate(match, result)
+    result = _generate_json(_build_prompt(match, nutrition, nutrition_source))
+    _validate(match, nutrition, result)
+    note = str(result.get("note", ""))
+    if nutrition_source == "AI_ESTIMATED":
+        note = f"{note} Rekomendasi ini didasarkan pada estimasi AI, bukan data resmi dataset.".strip()
     return {
         "recommendation": result["recommendation"],
-        "note": str(result.get("note", "")),
+        "note": note,
         "details": result["recommendation_details"],
     }
 
