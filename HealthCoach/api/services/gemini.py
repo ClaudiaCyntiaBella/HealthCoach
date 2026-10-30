@@ -225,6 +225,8 @@ def identify_food(images) -> FoodIdentification:
     result = _generate_json(contents)
 
     def optional_food_name(key: str) -> str | None:
+        if key not in result:
+            raise GeminiResponseError()
         value = result.get(key)
         if isinstance(value, str):
             return value.strip() or None
@@ -235,20 +237,40 @@ def identify_food(images) -> FoodIdentification:
     food_name = optional_food_name("food_name")
     canonical_food_name = optional_food_name("canonical_food_name")
 
-    confidence = str(result.get("confidence", "rendah")).lower()
+    # Canonical name tanpa nama makanan utama adalah respons yang tidak konsisten.
+    # Menolaknya mencegah hasil UNKNOWN memperoleh data nutrisi melalui canonical match.
+    if food_name is None and canonical_food_name is not None:
+        raise GeminiResponseError()
+
+    raw_confidence = result.get("confidence", "rendah")
+    if not isinstance(raw_confidence, str):
+        raise GeminiResponseError()
+    confidence = raw_confidence.lower()
 
     if confidence not in {"tinggi", "sedang", "rendah"}:
         confidence = "rendah"
 
     ingredients = result.get("ingredients", [])
-
     if not isinstance(ingredients, list):
-        ingredients = []
+        raise GeminiResponseError()
+    for ingredient in ingredients:
+        if not isinstance(ingredient, dict):
+            raise GeminiResponseError()
+        if not isinstance(ingredient.get("name"), str):
+            raise GeminiResponseError()
+        if not isinstance(ingredient.get("visible"), bool):
+            raise GeminiResponseError()
+        if ingredient.get("confidence") not in {"tinggi", "sedang", "rendah"}:
+            raise GeminiResponseError()
+
+    notes = result.get("notes", "")
+    if not isinstance(notes, str):
+        raise GeminiResponseError()
 
     return FoodIdentification(
         food_name=food_name,
         canonical_food_name=canonical_food_name,
         confidence=confidence,
         ingredients=ingredients,
-        notes=str(result.get("notes", "")).strip(),
+        notes=notes.strip(),
     )

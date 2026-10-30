@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from api.exceptions import (
     GeminiAuthenticationError,
@@ -14,7 +15,12 @@ from api.exceptions import (
     GeminiTimeoutError,
 )
 from api.models import Nutrition
-from api.services.gemini import FoodIdentification, _classify_error, _parse_json_response
+from api.services.gemini import (
+    FoodIdentification,
+    _classify_error,
+    _parse_json_response,
+    identify_food,
+)
 from api.services.pipeline import analyze_food_images
 from api.services.nutrition import (
     CsvNutritionRepository,
@@ -185,6 +191,69 @@ class GeminiResponseParserTests(SimpleTestCase):
         self.assertNotEqual(_classify_error(error), GeminiConfigurationError)
 
 
+class FoodIdentificationTests(SimpleTestCase):
+    def _image(self, name):
+        return SimpleUploadedFile(name, b"image-bytes", content_type="image/jpeg")
+
+    @patch("api.services.gemini._generate_json")
+    def test_uses_all_photos_as_one_food_context(self, generate_mock):
+        generate_mock.return_value = {
+            "food_name": "Nasi Goreng Ayam",
+            "canonical_food_name": "Nasi Goreng",
+            "confidence": "tinggi",
+            "ingredients": [],
+            "notes": "Nasi dan ayam terlihat.",
+        }
+
+        result = identify_food([self._image("front.jpg"), self._image("side.jpg")])
+
+        self.assertEqual(result.food_name, "Nasi Goreng Ayam")
+        self.assertEqual(result.canonical_food_name, "Nasi Goreng")
+        contents = generate_mock.call_args.args[0]
+        self.assertIn("Foto sudut ke-1: front.jpg", contents)
+        self.assertIn("Foto sudut ke-2: side.jpg", contents)
+
+    @patch("api.services.gemini._generate_json")
+    def test_accepts_distinct_food_names_without_forcing_canonical_name(self, generate_mock):
+        for food_name in ("Nasi Goreng", "Bakso", "Soto Ayam", "Bayam Tumis"):
+            generate_mock.return_value = {
+                "food_name": food_name,
+                "canonical_food_name": None,
+                "confidence": "sedang",
+                "ingredients": [],
+                "notes": "Terlihat cukup jelas.",
+            }
+            result = identify_food([self._image("food.jpg")])
+            self.assertEqual(result.food_name, food_name)
+            self.assertIsNone(result.canonical_food_name)
+
+    @patch("api.services.gemini._generate_json")
+    def test_unknown_food_cannot_have_canonical_name(self, generate_mock):
+        generate_mock.return_value = {
+            "food_name": None,
+            "canonical_food_name": "Nasi Goreng",
+            "confidence": "rendah",
+            "ingredients": [],
+            "notes": "Foto tidak cukup jelas.",
+        }
+
+        with self.assertRaises(GeminiResponseError):
+            identify_food([self._image("unclear.jpg")])
+
+    @patch("api.services.gemini._generate_json")
+    def test_non_food_or_unclear_image_returns_unknown(self, generate_mock):
+        generate_mock.return_value = {
+            "food_name": None,
+            "canonical_food_name": None,
+            "confidence": "rendah",
+            "ingredients": [],
+            "notes": "Objek bukan makanan atau tidak cukup jelas.",
+        }
+
+        result = identify_food([self._image("object.jpg")])
+        self.assertEqual(result.status, "UNKNOWN")
+
+
 class RecommendationTests(SimpleTestCase):
     @patch(
         "api.services.recommendation._generate_json"
@@ -295,6 +364,43 @@ class RecommendationTests(SimpleTestCase):
             nutrition,
         )
         self.assertIn("saran", result["details"])
+
+    @patch("api.services.recommendation._generate_json")
+    def test_contextual_recommendations_keep_each_food_context(self, generate_mock):
+        cases = (
+            ("Nasi Goreng", "sayuran", "Tambahkan sayuran sebagai pelengkap nasi goreng."),
+            ("Bakso", "sawi", "Tambahkan sawi atau sayuran lain pada sajian bakso."),
+            ("Soto Ayam", "kuah", "Pilih pelengkap yang sesuai dengan sajian soto berkuah."),
+            ("Bayam Tumis", "protein", "Padukan bayam tumis dengan sumber protein."),
+        )
+
+        for food_name, expected_term, advice in cases:
+            nutrition = {
+                "id": "1", "name": food_name, "calories": "100.0",
+                "proteins": "5.0", "fat": "3.0", "carbohydrate": "12.0", "image": "",
+            }
+            match = NutritionMatch(food_name, food_name.lower(), "IDENTIFIED", "MATCHED", nutrition)
+            generate_mock.return_value = {
+                "food_name": food_name,
+                "identification_status": "IDENTIFIED",
+                "matching_status": "MATCHED",
+                "nutrition": nutrition,
+                "recommendation": advice,
+                "note": "Informasi umum.",
+                "recommendation_details": {
+                    "saran": advice,
+                    "alasan": f"Saran disesuaikan dengan {food_name} dan data yang tersedia.",
+                    "pendamping_alternatif": "Pilih pendamping yang relevan dengan hidangan.",
+                    "catatan_nutrisi": "Gunakan panel nutrisi sebagai rujukan.",
+                },
+            }
+
+            result = generate_recommendation(match)
+            self.assertIn(expected_term, result["details"]["saran"].lower())
+            self.assertEqual(result["details"], generate_mock.return_value["recommendation_details"])
+            self.assertEqual(generate_mock.return_value["nutrition"], nutrition)
+
+        self.assertEqual(generate_mock.call_count, len(cases))
 
 
 class AnalysisPipelineTests(SimpleTestCase):
