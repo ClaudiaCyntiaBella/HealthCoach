@@ -1,3 +1,7 @@
+from types import SimpleNamespace
+
+from api.services.gemini import FoodIdentification
+from api.services.estimation import NutritionEstimation
 
 from io import BytesIO
 from unittest.mock import patch
@@ -48,6 +52,369 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
 
     def setUp(self):
         self.client = APIClient()
+
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_api_returns_ai_estimation_from_pipeline(
+        self,
+        identify_mock,
+        repository_mock,
+        estimation_mock,
+        recommendation_mock,
+    ):
+        # Hasil identifikasi dari AI Aril
+        identify_mock.return_value = FoodIdentification(
+            food_name="Makanan Uji",
+            canonical_food_name=None,
+            confidence="sedang",
+            ingredients=[],
+            notes="Makanan berhasil dikenali.",
+        )
+
+        # Simulasi hasil repository Yuli:
+        # makanan tidak ditemukan di dataset.
+        match = SimpleNamespace(
+            normalized_name="makanan uji",
+            matching_status="NOT_MATCHED",
+            duplicate_count=0,
+            match_method=None,
+            reference_name=None,
+            nutrition=None,
+        )
+        repository_mock.return_value.find_for_identification.return_value = match
+
+        # Simulasi estimasi yang dihasilkan AI Aril
+        estimated_nutrition = {
+            "calories": "250",
+            "proteins": "10",
+            "carbohydrate": "30",
+            "fat": "8",
+        }
+
+        estimation_mock.return_value = NutritionEstimation(
+            nutrition=estimated_nutrition,
+            note="Nilai merupakan perkiraan berdasarkan foto.",
+        )
+
+        recommendation_mock.return_value = {
+            "recommendation": "Perhatikan variasi makanan.",
+            "details": {
+                "saran": "Tambahkan sayuran.",
+                "alasan": "Melengkapi variasi makanan.",
+                "pendamping_alternatif": "Sayuran.",
+                "catatan_nutrisi": "Nilai merupakan estimasi.",
+            },
+            "note": "Informasi nutrisi bersifat estimasi.",
+        }
+
+        # Request masuk melalui endpoint Django sebenarnya
+        response = self.client.post(
+            reverse("api:analyze"),
+            data={"images": [make_image()]},
+            format="multipart",
+        )
+
+        body = response.json()
+
+        # Pemeriksaan respons Backend & API Tiwi
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(body["success"])
+
+        self.assertEqual(
+            body["data"]["nutrition_source"],
+            "AI_ESTIMATED",
+        )
+        self.assertEqual(
+            body["data"]["matching"]["status"],
+            "NOT_MATCHED",
+        )
+        self.assertEqual(
+            body["data"]["nutrition"],
+            estimated_nutrition,
+        )
+        self.assertIn(
+            "estimasi",
+            body["data"]["estimation_note"].lower(),
+        )
+
+        self.assertIn(
+            "Nilai merupakan perkiraan berdasarkan foto.",
+            body["data"]["estimation_note"],
+        )
+
+        repository_mock.return_value.find_for_identification.assert_called_once_with(
+            "Makanan Uji",
+            None,
+        )
+        estimation_mock.assert_called_once()
+        recommendation_mock.assert_called_once_with(
+            match,
+            nutrition=estimated_nutrition,
+            nutrition_source="AI_ESTIMATED",
+        )
+
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_api_returns_dataset_nutrition_from_pipeline(
+        self,
+        identify_mock,
+        repository_mock,
+        estimation_mock,
+        recommendation_mock,
+    ):
+        # Simulasi hasil identifikasi makanan dari Aril
+        identify_mock.return_value = FoodIdentification(
+            food_name="Nasi Goreng",
+            canonical_food_name=None,
+            confidence="tinggi",
+            ingredients=[],
+            notes="Makanan berhasil dikenali.",
+        )
+
+        # Data nutrisi yang berasal dari repository Yuli
+        dataset_nutrition = {
+            "id": "773",
+            "name": "Nasi Goreng",
+            "calories": "276.0",
+            "proteins": "3.2",
+            "carbohydrate": "30.2",
+            "fat": "3.2",
+            "image": "",
+        }
+
+        match = SimpleNamespace(
+            normalized_name="nasi goreng",
+            matching_status="MATCHED",
+            duplicate_count=1,
+            match_method="EXACT",
+            reference_name=None,
+            nutrition=dataset_nutrition,
+        )
+
+        repository_mock.return_value.find_for_identification.return_value = match
+
+        recommendation_mock.return_value = {
+            "recommendation": "Tambahkan sayuran sebagai pelengkap.",
+            "details": {
+                "saran": "Tambahkan sayuran.",
+                "alasan": "Melengkapi variasi makanan.",
+                "pendamping_alternatif": "Sayuran segar.",
+                "catatan_nutrisi": "Menggunakan data dataset.",
+            },
+            "note": "Informasi nutrisi berasal dari dataset.",
+        }
+
+        # Request melewati endpoint dan pipeline asli
+        response = self.client.post(
+            reverse("api:analyze"),
+            data={"images": [make_image()]},
+            format="multipart",
+        )
+
+        body = response.json()
+
+        # Pemeriksaan respons Backend & API Tiwi
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(body["success"])
+
+        self.assertEqual(
+            body["data"]["nutrition_source"],
+            "DATASET",
+        )
+        self.assertEqual(
+            body["data"]["nutrition"],
+            dataset_nutrition,
+        )
+        self.assertEqual(
+            body["data"]["matching"]["status"],
+            "MATCHED",
+        )
+        self.assertEqual(
+            body["data"]["matching"]["method"],
+            "EXACT",
+        )
+        self.assertIsNone(
+            body["data"]["estimation_note"]
+        )
+
+        # Estimasi AI tidak boleh dipanggil jika dataset cocok
+        estimation_mock.assert_not_called()
+
+        repository_mock.return_value.find_for_identification.assert_called_once_with(
+            "Nasi Goreng",
+            None,
+        )
+        recommendation_mock.assert_called_once_with(
+            match,
+            nutrition=dataset_nutrition,
+            nutrition_source="DATASET",
+        )
+
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_api_returns_unavailable_nutrition_from_pipeline(
+        self,
+        identify_mock,
+        repository_mock,
+        estimation_mock,
+        recommendation_mock,
+    ):
+        identify_mock.return_value = FoodIdentification(
+            food_name="Makanan Uji",
+            canonical_food_name=None,
+            confidence="sedang",
+            ingredients=[],
+            notes="Makanan teridentifikasi.",
+        )
+
+        match = SimpleNamespace(
+            identified_name="Makanan Uji",
+            identification_status="IDENTIFIED",
+            normalized_name="makanan uji",
+            matching_status="NOT_MATCHED",
+            duplicate_count=0,
+            match_method=None,
+            reference_name=None,
+            nutrition=None,
+        )
+
+        repository_mock.return_value.find_for_identification.return_value = match
+
+        estimation_mock.return_value = NutritionEstimation(
+            nutrition=None,
+            note="Estimasi tidak tersedia karena informasi porsi tidak cukup.",
+        )
+
+        recommendation_mock.return_value = {
+            "recommendation": "Informasi nutrisi belum tersedia.",
+            "details": {
+                "saran": "Gunakan foto yang lebih jelas.",
+                "alasan": "Data nutrisi belum tersedia.",
+                "pendamping_alternatif": "Tidak tersedia.",
+                "catatan_nutrisi": "Tidak ada data nutrisi.",
+            },
+            "note": "Nutrisi tidak tersedia.",
+        }
+
+        response = self.client.post(
+            reverse("api:analyze"),
+            data={"images": [make_image()]},
+            format="multipart",
+        )
+
+        body = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(body["success"])
+        self.assertEqual(
+            body["data"]["nutrition_source"],
+            "UNAVAILABLE",
+        )
+        self.assertIsNone(body["data"]["nutrition"])
+        self.assertEqual(
+            body["data"]["matching"]["status"],
+            "NOT_MATCHED",
+        )
+        self.assertEqual(
+            body["data"]["estimation_note"],
+            "Estimasi tidak tersedia karena informasi porsi tidak cukup.",
+        )
+
+        estimation_mock.assert_called_once()
+        recommendation_mock.assert_called_once_with(
+            match,
+            nutrition=None,
+            nutrition_source="UNAVAILABLE",
+        )
+
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_api_returns_unknown_from_pipeline(
+        self,
+        identify_mock,
+        repository_mock,
+        estimation_mock,
+        recommendation_mock,
+    ):
+        identify_mock.return_value = FoodIdentification(
+            food_name=None,
+            canonical_food_name=None,
+            confidence="rendah",
+            ingredients=[],
+            notes="Objek tidak dapat dikenali sebagai makanan.",
+        )
+
+        match = SimpleNamespace(
+            identified_name=None,
+            identification_status="UNKNOWN",
+            normalized_name="",
+            matching_status="NOT_MATCHED",
+            duplicate_count=0,
+            match_method=None,
+            reference_name=None,
+            nutrition=None,
+        )
+
+        repository_mock.return_value.find_for_identification.return_value = match
+
+        recommendation_mock.return_value = {
+            "recommendation": "Silakan unggah foto makanan yang lebih jelas.",
+            "details": {
+                "saran": "Ambil ulang foto.",
+                "alasan": "Objek belum dikenali.",
+                "pendamping_alternatif": "Tidak tersedia.",
+                "catatan_nutrisi": "Tidak ada data nutrisi.",
+            },
+            "note": "Hasil identifikasi UNKNOWN.",
+        }
+
+        response = self.client.post(
+            reverse("api:analyze"),
+            data={"images": [make_image()]},
+            format="multipart",
+        )
+
+        body = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(body["success"])
+        self.assertEqual(
+            body["data"]["identification"]["identification_status"],
+            "UNKNOWN",
+        )
+        self.assertEqual(
+            body["data"]["nutrition_source"],
+            "UNAVAILABLE",
+        )
+        self.assertIsNone(body["data"]["nutrition"])
+        self.assertIsNone(body["data"]["estimation_note"])
+
+        # UNKNOWN tidak boleh menjalankan estimasi nutrisi AI.
+        estimation_mock.assert_not_called()
+
+        repository_mock.return_value.find_for_identification.assert_called_once_with(
+            None,
+            None,
+        )
+
+        recommendation_mock.assert_called_once_with(
+            match,
+            nutrition=None,
+            nutrition_source="UNAVAILABLE",
+        )
+
 
     # ==========================================================
     # 1. VALIDASI INPUT FOTO
