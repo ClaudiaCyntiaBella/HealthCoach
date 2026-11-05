@@ -1,5 +1,7 @@
-"""Model database nutrisi akan dikelola pada bagian Backend & Database."""
 
+"""Model database nutrisi dan riwayat analisis pengguna."""
+
+from django.conf import settings
 from django.db import models
 
 
@@ -19,3 +21,20 @@ class Nutrition(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class FoodAnalysisHistory(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="analysis_histories"
+    )
+    result = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "food_analysis_history"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Riwayat {self.user.username} - {self.created_at}"

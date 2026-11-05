@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "api",
+    "dashboard",
 ]
 
 
@@ -113,6 +114,9 @@ elif os.getenv("DB_ENGINE", "sqlite").lower() == "postgresql":
             "HOST": os.getenv("POSTGRES_HOST", "localhost"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
             "CONN_MAX_AGE": 60,
+            "OPTIONS": {
+                "sslmode": "require",
+            },
         }
     }
 
@@ -163,7 +167,7 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
-# Issue #54 - Konfigurasi autentikasi JWT
+# Konfigurasi autentikasi JWT
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -210,7 +214,10 @@ GEMINI_TIMEOUT_SECONDS = int(
 
 # Retry dibatasi untuk gangguan sementara (misalnya 503), bukan untuk kuota.
 GEMINI_MAX_RETRIES = max(0, int(os.getenv("GEMINI_MAX_RETRIES", "1")))
-GEMINI_RETRY_DELAY_SECONDS = max(0, float(os.getenv("GEMINI_RETRY_DELAY_SECONDS", "1")))
+GEMINI_RETRY_DELAY_SECONDS = max(
+    0,
+    float(os.getenv("GEMINI_RETRY_DELAY_SECONDS", "1")),
+)
 
 
 dataset_setting = Path(
