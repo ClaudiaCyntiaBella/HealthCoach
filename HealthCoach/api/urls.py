@@ -12,6 +12,10 @@ from .auth_views import (
     ProfileView,
     RegisterView,
 )
+from .history_views import (
+    FoodAnalysisHistoryDetailView,
+    FoodAnalysisHistoryListView,
+)
 from .views import FoodAnalysisView, HealthView
 
 
@@ -63,5 +67,17 @@ urlpatterns = [
         "auth/me/",
         ProfileView.as_view(),
         name="profile",
+    ),
+
+    # Riwayat analisis makanan pengguna
+    path(
+        "history/",
+        FoodAnalysisHistoryListView.as_view(),
+        name="history-list",
+    ),
+    path(
+        "history/<int:history_id>/",
+        FoodAnalysisHistoryDetailView.as_view(),
+        name="history-detail",
     ),
 ]
