@@ -16,6 +16,7 @@ from .history_views import (
     FoodAnalysisHistoryDetailView,
     FoodAnalysisHistoryListView,
 )
+from .health_profile_views import UserHealthProfileView
 from .views import FoodAnalysisView, HealthView
 
 
@@ -79,5 +80,12 @@ urlpatterns = [
         "history/<int:history_id>/",
         FoodAnalysisHistoryDetailView.as_view(),
         name="history-detail",
+    ),
+
+    # API profil kesehatan pengguna
+    path(
+        "health-profile/",
+        UserHealthProfileView.as_view(),
+        name="health-profile",
     ),
 ]
