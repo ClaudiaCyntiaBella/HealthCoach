@@ -239,7 +239,12 @@ class LogoutAPITests(TestCase):
             status.HTTP_401_UNAUTHORIZED,
         )
 
+
     def test_logout_without_login(self):
+        """Logout tetap berhasil tanpa access token."""
+
+        self.client.credentials()
+
         response = self.client.post(
             self.logout_url,
             {"refresh": self.refresh_token},
@@ -248,13 +253,78 @@ class LogoutAPITests(TestCase):
 
         self.assertEqual(
             response.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertTrue(response.data["success"])
+
+        # Refresh token yang sudah logout tidak dapat dipakai lagi.
+        refresh_response = self.client.post(
+            self.refresh_url,
+            {"refresh": self.refresh_token},
+            format="json",
+        )
+
+        self.assertEqual(
+            refresh_response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
 
-    def test_logout_without_refresh_token(self):
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {self.access_token}"
+
+    def test_logout_with_expired_access_token(self):
+        """Logout berhasil meskipun access token kedaluwarsa."""
+
+        from datetime import timedelta
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        expired_token = AccessToken.for_user(self.user)
+        expired_token.set_exp(
+            lifetime=timedelta(seconds=-10)
         )
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {expired_token}"
+        )
+
+        # Pastikan access token memang tidak bisa digunakan.
+        profile_response = self.client.get(
+            reverse("api:profile")
+        )
+
+        self.assertEqual(
+            profile_response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+        # Logout tetap bisa dilakukan dengan refresh token.
+        logout_response = self.client.post(
+            self.logout_url,
+            {"refresh": self.refresh_token},
+            format="json",
+        )
+
+        self.assertEqual(
+            logout_response.status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertTrue(logout_response.data["success"])
+
+        # Refresh token harus masuk blacklist.
+        refresh_response = self.client.post(
+            self.refresh_url,
+            {"refresh": self.refresh_token},
+            format="json",
+        )
+
+        self.assertEqual(
+            refresh_response.status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+
+    def test_logout_without_refresh_token(self):
+        """Logout tanpa refresh token harus ditolak."""
+
+        self.client.credentials()
 
         response = self.client.post(
             self.logout_url,
@@ -266,6 +336,8 @@ class LogoutAPITests(TestCase):
             response.status_code,
             status.HTTP_400_BAD_REQUEST,
         )
+
+        self.assertFalse(response.data["success"])
 
 
 class ProfileAPITests(TestCase):
@@ -326,3 +398,138 @@ class ProfileAPITests(TestCase):
             response.status_code,
             status.HTTP_401_UNAUTHORIZED,
         )
+
+
+class ProfileUpdateAPITests(TestCase):
+    """Pengujian API pembaruan profil pengguna."""
+
+    def setUp(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        self.client = APIClient()
+        self.url = reverse("api:profile")
+
+        self.user = User.objects.create_user(
+            username="tiwi_edit",
+            email="tiwi_edit@example.com",
+            password="PasswordUji!2026",
+        )
+
+        self.other_user = User.objects.create_user(
+            username="pengguna_lain",
+            email="pengguna_lain@example.com",
+            password="PasswordUji!2026",
+        )
+
+        token = RefreshToken.for_user(self.user)
+        self.access_token = str(token.access_token)
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {self.access_token}"
+        )
+
+    def test_update_profile_success(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "username": "tiwi_baru",
+                "email": "TIWI_BARU@example.com",
+                "first_name": "Dini",
+                "last_name": "Pratiwi",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["success"])
+
+        self.user.refresh_from_db()
+
+        self.assertEqual(self.user.username, "tiwi_baru")
+        self.assertEqual(self.user.email, "tiwi_baru@example.com")
+        self.assertEqual(self.user.first_name, "Dini")
+        self.assertEqual(self.user.last_name, "Pratiwi")
+
+    def test_update_one_field_only(self):
+        response = self.client.patch(
+            self.url,
+            {"first_name": "Dini"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Dini")
+        self.assertEqual(self.user.username, "tiwi_edit")
+
+    def test_update_requires_login(self):
+        self.client.credentials()
+
+        response = self.client.patch(
+            self.url,
+            {"first_name": "Dini"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_duplicate_username_rejected(self):
+        response = self.client.patch(
+            self.url,
+            {"username": "pengguna_lain"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_duplicate_email_rejected(self):
+        response = self.client.patch(
+            self.url,
+            {"email": "pengguna_lain@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_sensitive_fields_rejected(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "password": "PasswordBaru!2026",
+                "is_staff": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_staff)
+        self.assertTrue(
+            self.user.check_password("PasswordUji!2026")
+        )
+
+    def test_cannot_change_other_user(self):
+        response = self.client.patch(
+            self.url,
+            {
+                "id": self.other_user.id,
+                "first_name": "Diubah",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+        self.other_user.refresh_from_db()
+        self.assertEqual(self.other_user.first_name, "")
+
+    def test_empty_update_rejected(self):
+        response = self.client.patch(
+            self.url,
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)

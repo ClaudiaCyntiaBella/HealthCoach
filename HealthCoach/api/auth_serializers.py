@@ -62,3 +62,73 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data["email"],
             password=validated_data["password"],
         )
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Validasi perubahan profil pengguna yang sedang login."""
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+        ]
+        read_only_fields = ["id"]
+        extra_kwargs = {
+            "email": {
+                "required": False,
+                "allow_blank": False,
+            },
+        }
+
+    def validate_username(self, value):
+        username = value.strip()
+
+        if User.objects.filter(
+            username__iexact=username
+        ).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError(
+                "Username sudah digunakan pengguna lain."
+            )
+
+        return username
+
+    def validate_email(self, value):
+        email = value.strip().lower()
+
+        if User.objects.filter(
+            email__iexact=email
+        ).exclude(pk=self.instance.pk).exists():
+            raise serializers.ValidationError(
+                "Email sudah terdaftar. Gunakan email lain."
+            )
+
+        return email
+
+    def validate(self, attrs):
+        allowed_fields = {
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+        }
+
+        unknown_fields = set(self.initial_data.keys()) - allowed_fields
+
+        if unknown_fields:
+            raise serializers.ValidationError({
+                "non_field_errors": [
+                    "Field tidak diizinkan: "
+                    + ", ".join(sorted(unknown_fields))
+                ]
+            })
+
+        if not attrs:
+            raise serializers.ValidationError(
+                "Minimal satu data profil harus diisi."
+            )
+
+        return attrs

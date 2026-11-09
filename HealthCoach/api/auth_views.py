@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .auth_serializers import RegisterSerializer
+from .auth_serializers import RegisterSerializer, ProfileUpdateSerializer
 
 
 class RegisterView(APIView):
@@ -38,10 +38,15 @@ class RegisterView(APIView):
         )
 
 
-class LogoutView(APIView):
-    """Endpoint logout dengan menonaktifkan refresh token."""
 
-    permission_classes = [IsAuthenticated]
+class LogoutView(APIView):
+    """Logout menggunakan refresh token yang masih valid."""
+
+    # Logout tidak memerlukan access token.
+    # Token yang kedaluwarsa pada header Authorization
+    # tidak akan menghalangi proses logout.
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def post(self, request):
         token = request.data.get("refresh")
@@ -55,19 +60,22 @@ class LogoutView(APIView):
             refresh_token = RefreshToken(token)
         except TokenError as exc:
             raise ValidationError(
-                {"refresh": ["Refresh token tidak valid atau kedaluwarsa."]}
+                {
+                    "refresh": [
+                        "Refresh token tidak valid atau kedaluwarsa."
+                    ]
+                }
             ) from exc
-
-        if str(refresh_token.get("user_id")) != str(request.user.pk):
-            raise PermissionDenied(
-                "Refresh token bukan milik pengguna yang sedang login."
-            )
 
         try:
             refresh_token.blacklist()
         except TokenError as exc:
             raise ValidationError(
-                {"refresh": ["Refresh token tidak dapat dinonaktifkan."]}
+                {
+                    "refresh": [
+                        "Refresh token tidak dapat dinonaktifkan."
+                    ]
+                }
             ) from exc
 
         return Response(
@@ -80,21 +88,38 @@ class LogoutView(APIView):
 
 
 class ProfileView(APIView):
-    """Menampilkan profil pengguna yang sudah login."""
+    """Menampilkan dan memperbarui profil pengguna yang login."""
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
+        """Mengambil data profil pengguna yang sedang login."""
+        serializer = ProfileUpdateSerializer(request.user)
 
         return Response(
             {
                 "success": True,
-                "data": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                },
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def patch(self, request):
+        """Memperbarui sebagian data profil pengguna."""
+        serializer = ProfileUpdateSerializer(
+            request.user,
+            data=request.data,
+            partial=True,
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Profil berhasil diperbarui.",
+                "data": serializer.data,
             },
             status=status.HTTP_200_OK,
         )
