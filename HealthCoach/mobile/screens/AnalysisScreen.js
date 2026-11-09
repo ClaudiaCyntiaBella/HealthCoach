@@ -123,6 +123,14 @@ export default function AnalysisScreen({ onBack }) {
     }
   };
 
+  const startNewAnalysis = () => {
+    if (loading) return;
+
+    setPhotos([null, null, null]);
+    setMessage('');
+    setAnalysisResult(null);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
@@ -130,22 +138,21 @@ export default function AnalysisScreen({ onBack }) {
         colors={['#F3FBF8', '#E9F7F4', '#EFF6FD']}
         style={styles.background}
       >
-        <ScrollView contentContainerStyle={styles.content}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={onBack}
-            accessibilityLabel="Kembali ke HomeScreen"
-          >
-            <Feather name="arrow-left" size={21} color="#168A75" />
-            <Text style={styles.backText}>Kembali</Text>
-          </TouchableOpacity>
-
+        <ScrollView
+          key={analysisResult ? 'result' : 'upload'}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {!analysisResult ? (
+            <>
           <View style={styles.intro}>
             <Text style={styles.eyebrow}>HEALTHCOACH AI</Text>
             <Text style={styles.title}>Analisis Makanan</Text>
             <Text style={styles.description}>
-              Tambahkan foto makanan yang sama dari beberapa
-              sudut agar AI memperoleh informasi visual lebih lengkap.
+              Pilih atau ambil minimal 1 foto makanan.
+              Kamu bisa menambahkan hingga 3 foto dari sudut
+              berbeda untuk membantu AI mengenali makanan.
             </Text>
           </View>
 
@@ -156,7 +163,7 @@ export default function AnalysisScreen({ onBack }) {
                 {selectedCount} dari 3 foto dipilih
               </Text>
               <Text style={styles.progressSubtitle}>
-                Minimal 1 foto • Direkomendasikan 3 foto
+                Minimal 1 foto • Disarankan 3 sudut berbeda
               </Text>
             </View>
           </View>
@@ -228,9 +235,11 @@ export default function AnalysisScreen({ onBack }) {
           <View style={styles.infoCard}>
             <Feather name="info" size={20} color="#168A75" />
             <Text style={styles.infoText}>
-              Foto harus memperlihatkan makanan yang sama.
-              Maksimal 5 MB per foto dan 20 MB keseluruhan.
-              Hasil AI merupakan estimasi.
+              Tips: Pastikan makanan terlihat jelas,
+              gunakan pencahayaan yang cukup, dan ambil foto
+              dari sudut berbeda. Semua foto harus menunjukkan
+              makanan yang sama. Maksimal 5 MB per foto dan
+              20 MB keseluruhan. Hasil AI merupakan estimasi.
             </Text>
           </View>
 
@@ -254,7 +263,7 @@ export default function AnalysisScreen({ onBack }) {
                 <Feather name="zap" size={19} color="#FFFFFF" />
               )}
               <Text style={styles.analyzeText}>
-                {loading ? 'Menganalisis Makanan...' : 'Analisis Makanan'}
+                {loading ? 'Sedang Menganalisis...' : 'Mulai Analisis'}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -266,8 +275,113 @@ export default function AnalysisScreen({ onBack }) {
             </Text>
           )}
 
-          {analysisResult && (
-            <AnalysisResult result={analysisResult} />
+            </>
+          ) : (
+            <>
+              <View style={styles.intro}>
+                <Text style={styles.eyebrow}>
+                  HEALTHCOACH AI
+                </Text>
+                <Text style={styles.title}>
+                  Hasil Analisis Makanan
+                </Text>
+                <Text style={styles.description}>
+                  Analisis selesai! Berikut informasi makanan
+                  dan rekomendasi nutrisi dari HealthCoach AI.
+                </Text>
+              </View>
+
+              {analysisResult?.identification?.identification_status ===
+              'UNKNOWN' ? (
+                <View
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 22,
+                    padding: 28,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: '#E1F0EB',
+                    marginBottom: 18,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 76,
+                      height: 76,
+                      borderRadius: 38,
+                      backgroundColor: '#FDECEC',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 20,
+                    }}
+                  >
+                    <Feather
+                      name="x-circle"
+                      size={38}
+                      color="#D96868"
+                    />
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: 21,
+                      fontWeight: '800',
+                      color: '#173C35',
+                      textAlign: 'center',
+                      marginBottom: 12,
+                    }}
+                  >
+                    Foto Tidak Sesuai
+                  </Text>
+
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      lineHeight: 23,
+                      color: '#647D76',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Kami belum dapat mengenali makanan atau
+                    minuman pada foto ini. Silakan unggah foto
+                    yang lebih jelas dan pastikan objek utama
+                    adalah makanan atau minuman.
+                  </Text>
+                </View>
+              ) : (
+                <AnalysisResult result={analysisResult} />
+              )}
+
+              <TouchableOpacity
+                onPress={startNewAnalysis}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Analisis makanan lain"
+                style={[
+                  styles.analyzeButton,
+                  { marginTop: 24 },
+                ]}
+              >
+                <LinearGradient
+                  colors={['#138D76', '#2BAE96']}
+                  style={styles.analyzeGradient}
+                >
+                  <Feather
+                    name="camera"
+                    size={19}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.analyzeText}>
+                    Analisis Makanan Lain
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <Text style={styles.pendingText}>
+                Ingin memeriksa makanan berbeda?
+                Tekan tombol di atas untuk memilih foto baru.
+              </Text>
+            </>
           )}
         </ScrollView>
       </LinearGradient>

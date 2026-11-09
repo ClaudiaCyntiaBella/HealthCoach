@@ -64,7 +64,12 @@ class FoodAnalysisView(APIView):
         # Hanya hasil analisis pengguna login yang disimpan.
         history_id = None
 
-        if request.user.is_authenticated:
+        if (
+            request.user.is_authenticated
+            and result.get("identification", {}).get(
+                "identification_status"
+            ) != "UNKNOWN"
+        ):
             history = FoodAnalysisHistory.objects.create(
                 user=request.user,
                 result=result,

@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { logoutUser } from '../services/auth';
 
-export default function HomeScreen({ onLogout, onStartAnalysis, onOpenHistory }) {
+export default function HomeScreen({ onLogout, onStartAnalysis }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutDialog, setLogoutDialog] = useState(null);
   const [logoutError, setLogoutError] = useState('');
@@ -120,30 +120,7 @@ export default function HomeScreen({ onLogout, onStartAnalysis, onOpenHistory })
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={onOpenHistory}
-            accessibilityLabel="Lihat Riwayat Analisis"
-            style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: 22,
-              padding: 20,
-              marginBottom: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-            }}
-          >
-            <Feather name="clock" size={25} color="#168A75" />
-            <View style={{ flex: 1, marginLeft: 15 }}>
-              <Text style={{ color: '#164C40', fontSize: 17, fontWeight: '800' }}>
-                Riwayat Analisis
-              </Text>
-              <Text style={{ color: '#607A73', fontSize: 13, marginTop: 5 }}>
-                Lihat kembali hasil analisis makananmu
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={22} color="#168A75" />
-          </TouchableOpacity>
+
 
           <View style={styles.note}>
             <Feather name="shield" size={19} color="#168A75" />

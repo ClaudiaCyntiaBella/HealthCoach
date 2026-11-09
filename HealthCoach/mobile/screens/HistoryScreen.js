@@ -5,6 +5,7 @@ import {
   FlatList,
   SafeAreaView,
   ScrollView,
+  TextInput,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -12,7 +13,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   deleteHistory,
   getHistories,
@@ -192,8 +193,72 @@ const historyStyles = StyleSheet.create({
   },
 });
 
+function getHistoryFoodName(item) {
+  const result = item?.result || {};
+  const name =
+    result.identification?.food_name ||
+    result.nutrition?.name;
+
+  return typeof name === 'string' && name.trim()
+    ? name.trim()
+    : 'Nama makanan tidak tersedia';
+}
+
+function isDrink(name) {
+  if (!name || typeof name !== 'string') return false;
+
+  const normalized = name
+    .toLocaleLowerCase('id-ID')
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  const drinkPrefixes = [
+    'kopi',
+    'teh',
+    'jus',
+    'juice',
+    'susu',
+    'boba',
+    'smoothie',
+    'milkshake',
+    'cappuccino',
+    'latte',
+    'americano',
+    'matcha',
+    'soda',
+    'sirup',
+    'wedang',
+    'cendol',
+    'dawet',
+    'minuman',
+    'thai tea',
+    'lemon tea',
+    'air mineral',
+    'air putih',
+    'air kelapa',
+    'es teh',
+    'es kopi',
+    'es jeruk',
+    'es susu',
+    'es cokelat',
+    'es matcha',
+    'es cendol',
+    'es dawet',
+    'es kelapa',
+    'es campur',
+    'es buah',
+  ];
+
+  return drinkPrefixes.some(
+    (prefix) =>
+      normalized === prefix ||
+      normalized.startsWith(prefix + ' ')
+  );
+}
+
 export default function HistoryScreen({ onBack }) {
   const [histories, setHistories] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -264,20 +329,52 @@ export default function HistoryScreen({ onBack }) {
     );
   };
 
+  const filteredHistories = histories.filter((item) =>
+    getHistoryFoodName(item)
+      .toLocaleLowerCase('id-ID')
+      .includes(searchQuery.trim().toLocaleLowerCase('id-ID'))
+  );
+
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.8}
       onPress={() => openDetail(item)}
-      accessibilityLabel={`Buka riwayat analisis ${item.id}`}
+      accessibilityLabel={`Lihat hasil analisis ${getHistoryFoodName(item)}`}
     >
       <View style={styles.itemIcon}>
-        <Feather name="file-text" size={23} color="#168A75" />
+        {(
+          item.result?.identification?.identification_status === 'UNKNOWN' ||
+          getHistoryFoodName(item) === 'Nama makanan tidak tersedia'
+        ) ? (
+          <Feather
+            name="x-circle"
+            size={25}
+            color="#D96868"
+          />
+        ) : isDrink(getHistoryFoodName(item)) ? (
+          <MaterialCommunityIcons
+            name="cup"
+            size={25}
+            color="#168A75"
+          />
+        ) : (
+          <MaterialCommunityIcons
+            name="silverware-fork-knife"
+            size={25}
+            color="#168A75"
+          />
+        )}
       </View>
       <View style={styles.itemContent}>
-        <Text style={styles.itemTitle}>Analisis #{item.id}</Text>
+        <Text style={styles.itemTitle} numberOfLines={2}>
+          {getHistoryFoodName(item)}
+        </Text>
         <Text style={styles.itemDate}>
           {formatDate(item.created_at)}
+        </Text>
+        <Text style={styles.itemHint}>
+          Ketuk untuk melihat hasil
         </Text>
       </View>
       <Feather name="chevron-right" size={21} color="#168A75" />
@@ -292,13 +389,21 @@ export default function HistoryScreen({ onBack }) {
         style={styles.background}
       >
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={selected ? () => setSelected(null) : onBack}
-            accessibilityLabel="Kembali"
-          >
-            <Feather name="arrow-left" size={23} color="#168A75" />
-          </TouchableOpacity>
+          {selected ? (
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setSelected(null)}
+              accessibilityLabel="Kembali ke daftar riwayat"
+            >
+              <Feather
+                name="arrow-left"
+                size={23}
+                color="#168A75"
+              />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
           <Text style={styles.headerTitle}>
             {selected ? 'Detail Riwayat' : 'Riwayat Analisis'}
           </Text>
@@ -309,7 +414,7 @@ export default function HistoryScreen({ onBack }) {
           <ScrollView contentContainerStyle={styles.content}>
             <View style={styles.cardVertical}>
               <Text style={styles.detailTitle}>
-                Analisis #{selected.id}
+                {getHistoryFoodName(selected)}
               </Text>
               <Text style={styles.itemDate}>
                 {formatDate(selected.created_at)}
@@ -346,24 +451,75 @@ export default function HistoryScreen({ onBack }) {
           </View>
         ) : (
           <FlatList
-            data={histories}
+            data={filteredHistories}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderItem}
             contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             refreshing={refreshing}
             onRefresh={() => loadHistories(true)}
             ListHeaderComponent={
-              <Text style={styles.description}>
-                Lihat kembali hasil analisis makanan yang tersimpan.
-              </Text>
+              <View style={styles.listHeader}>
+                <Text style={styles.description}>
+                  Temukan kembali makanan yang pernah kamu analisis.
+                </Text>
+
+                <View style={styles.searchBox}>
+                  <Feather
+                    name="search"
+                    size={20}
+                    color="#168A75"
+                  />
+
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Cari nama makanan..."
+                    placeholderTextColor="#829991"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCorrect={false}
+                    returnKeyType="search"
+                    accessibilityLabel="Cari riwayat berdasarkan nama makanan"
+                  />
+
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setSearchQuery('')}
+                      accessibilityLabel="Hapus pencarian"
+                    >
+                      <Feather
+                        name="x-circle"
+                        size={19}
+                        color="#829991"
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <Text style={styles.resultCount}>
+                  {searchQuery.trim()
+                    ? `${filteredHistories.length} hasil ditemukan`
+                    : `${histories.length} riwayat tersimpan`}
+                </Text>
+              </View>
             }
             ListEmptyComponent={
               <View style={styles.empty}>
-                <Feather name="clock" size={44} color="#168A75" />
-                <Text style={styles.emptyTitle}>Belum ada riwayat</Text>
+                <Feather
+                  name={searchQuery.trim() ? 'search' : 'clock'}
+                  size={44}
+                  color="#168A75"
+                />
+                <Text style={styles.emptyTitle}>
+                  {searchQuery.trim()
+                    ? 'Makanan tidak ditemukan'
+                    : 'Belum ada riwayat'}
+                </Text>
                 <Text style={styles.message}>
-                  Hasil analisis makanan akan muncul di sini
-                  setelah berhasil disimpan.
+                  {searchQuery.trim()
+                    ? 'Coba gunakan nama makanan atau kata kunci lain.'
+                    : 'Hasil analisis makanan akan muncul di sini setelah berhasil disimpan.'}
                 </Text>
               </View>
             }
@@ -447,6 +603,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center', padding: 17,
     borderRadius: 18, backgroundColor: '#FDECEC',
     gap: 10,
+  },
+  listHeader: {
+    marginBottom: 8,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E1F0EB',
+    paddingHorizontal: 15,
+    minHeight: 54,
+    gap: 11,
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    color: '#164C40',
+    fontSize: 14,
+    paddingVertical: 12,
+  },
+  resultCount: {
+    color: '#738982',
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  itemHint: {
+    color: '#168A75',
+    fontSize: 11,
+    marginTop: 7,
+    fontWeight: '600',
   },
   deleteText: { color: '#C74848', fontWeight: '700' },
 });
