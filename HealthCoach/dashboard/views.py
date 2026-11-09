@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Count
 from django.shortcuts import render
 
-from api.models import Nutrition
+from api.models import Nutrition, FoodAnalysisHistory
 
 
 User = get_user_model()
@@ -14,6 +14,7 @@ User = get_user_model()
 def dashboard_home(request):
     total_nutrition = Nutrition.objects.count()
     total_users = User.objects.count()
+    total_analyses = FoodAnalysisHistory.objects.count()
 
     duplicate_groups = (
         Nutrition.objects
@@ -28,7 +29,7 @@ def dashboard_home(request):
         "total_nutrition": total_nutrition,
         "total_users": total_users,
         "duplicate_groups": duplicate_groups,
-        "total_analyses": 0,
+        "total_analyses": total_analyses,
     }
 
     return render(request, "dashboard/index.html", context)
