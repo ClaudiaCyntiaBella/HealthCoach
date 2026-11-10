@@ -22,6 +22,14 @@ REQUIRED_COLUMNS = {
     "carbohydrate",
 }
 
+# Alias hanya untuk nama yang secara komposisi setara dengan entri dataset.
+# Jangan menambahkan kecocokan parsial seperti "es teh lemon" -> "teh": gula,
+# lemon, es, dan takaran penyajian dapat membuat kandungan nutrisinya berbeda.
+NUTRITION_ALIASES = {
+    "air kelapa muda": "kelapa muda air",
+    "jus tomat": "tomat air juice segar",
+}
+
 
 def normalize_food_name(food_name: str) -> str:
     """Menormalkan nama makanan agar konsisten dengan dataset."""
@@ -120,6 +128,17 @@ class CsvNutritionRepository:
     def _find_rows(self, normalized_name: str) -> list[dict]:
         return self._load_index().get(normalized_name, [])
 
+    def _find_alias(self, food_name: str | None) -> tuple[str, list[dict]] | None:
+        if not isinstance(food_name, str) or not food_name.strip():
+            return None
+
+        alias_name = NUTRITION_ALIASES.get(normalize_food_name(food_name))
+        if not alias_name:
+            return None
+
+        rows = self._find_rows(alias_name)
+        return (alias_name, rows) if rows else None
+
     def find_exact(self, food_name: str | None) -> NutritionMatch:
         if not isinstance(food_name, str) or not food_name.strip():
             return NutritionMatch(
@@ -173,18 +192,60 @@ class CsvNutritionRepository:
             not isinstance(canonical_food_name, str)
             or not canonical_food_name.strip()
         ):
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            _, alias_rows = alias_match
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=alias_rows[0],
+                duplicate_count=len(alias_rows),
+                match_method="ALIAS",
+                reference_name=alias_rows[0]["name"],
+            )
 
         canonical_name = canonical_food_name.strip()
         normalized_canonical = normalize_food_name(canonical_name)
 
         if not normalized_canonical:
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            _, alias_rows = alias_match
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=alias_rows[0],
+                duplicate_count=len(alias_rows),
+                match_method="ALIAS",
+                reference_name=alias_rows[0]["name"],
+            )
 
         rows = self._find_rows(normalized_canonical)
 
         if not rows:
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            _, alias_rows = alias_match
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=alias_rows[0],
+                duplicate_count=len(alias_rows),
+                match_method="ALIAS",
+                reference_name=alias_rows[0]["name"],
+            )
 
         return NutritionMatch(
             identified_name=food_name.strip(),
@@ -212,6 +273,25 @@ class DjangoNutritionRepository:
             )
         except (LookupError, ValueError) as exc:
             raise NutritionDataError() from exc
+
+    def _find_alias(self, food_name: str | None):
+        if not isinstance(food_name, str) or not food_name.strip():
+            return None
+
+        alias_name = NUTRITION_ALIASES.get(normalize_food_name(food_name))
+        if not alias_name:
+            return None
+
+        model = self._model()
+        try:
+            query = model.objects.filter(
+                name_normalized=alias_name
+            ).order_by("pk")
+            item = query.first()
+        except Exception as exc:
+            raise NutritionDataError() from exc
+
+        return (query.count(), item) if item is not None else None
 
     def find_exact(self, food_name: str | None) -> NutritionMatch:
         if not isinstance(food_name, str) or not food_name.strip():
@@ -290,13 +370,59 @@ class DjangoNutritionRepository:
             not isinstance(canonical_food_name, str)
             or not canonical_food_name.strip()
         ):
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            duplicate_count, item = alias_match
+            nutrition = {
+                "id": str(item.pk),
+                "name": str(item.name),
+                "calories": str(item.calories),
+                "proteins": str(item.proteins),
+                "fat": str(item.fat),
+                "carbohydrate": str(item.carbohydrate),
+                "image": str(getattr(item, "image", "") or ""),
+            }
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=nutrition,
+                duplicate_count=duplicate_count,
+                match_method="ALIAS",
+                reference_name=str(item.name),
+            )
 
         canonical_name = canonical_food_name.strip()
         normalized_canonical = normalize_food_name(canonical_name)
 
         if not normalized_canonical:
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            duplicate_count, item = alias_match
+            nutrition = {
+                "id": str(item.pk),
+                "name": str(item.name),
+                "calories": str(item.calories),
+                "proteins": str(item.proteins),
+                "fat": str(item.fat),
+                "carbohydrate": str(item.carbohydrate),
+                "image": str(getattr(item, "image", "") or ""),
+            }
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=nutrition,
+                duplicate_count=duplicate_count,
+                match_method="ALIAS",
+                reference_name=str(item.name),
+            )
 
         model = self._model()
 
@@ -312,7 +438,30 @@ class DjangoNutritionRepository:
             raise NutritionDataError() from exc
 
         if item is None:
-            return exact_match
+            alias_match = self._find_alias(food_name)
+            if alias_match is None:
+                return exact_match
+
+            duplicate_count, item = alias_match
+            nutrition = {
+                "id": str(item.pk),
+                "name": str(item.name),
+                "calories": str(item.calories),
+                "proteins": str(item.proteins),
+                "fat": str(item.fat),
+                "carbohydrate": str(item.carbohydrate),
+                "image": str(getattr(item, "image", "") or ""),
+            }
+            return NutritionMatch(
+                identified_name=food_name.strip(),
+                normalized_name=exact_match.normalized_name,
+                identification_status="IDENTIFIED",
+                matching_status="MATCHED",
+                nutrition=nutrition,
+                duplicate_count=duplicate_count,
+                match_method="ALIAS",
+                reference_name=str(item.name),
+            )
 
         nutrition = {
             "id": str(item.pk),

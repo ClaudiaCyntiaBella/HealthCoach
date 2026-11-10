@@ -158,6 +158,11 @@ function Analysis() {
   const recommendationDetails = analysisResult?.recommendation_details
   const foodName = identification.food_name || 'Makanan belum dikenali'
   const isMatched = matching.status === 'MATCHED' && nutrition
+  const nutritionSourceLabel = analysisResult?.nutrition_source === 'DATASET'
+    ? 'Data Dataset'
+    : analysisResult?.nutrition_source === 'AI_ESTIMATED'
+      ? 'Estimasi AI'
+      : 'Data nutrisi tidak ditemukan dalam dataset'
 
   return (
     <main className="an-page">
@@ -268,6 +273,9 @@ function Analysis() {
                 {matching.method === 'CANONICAL' && (
                   <span className="an-demo-badge">Referensi makanan dasar</span>
                 )}
+                {matching.method === 'ALIAS' && (
+                  <span className="an-demo-badge">Nama alternatif dataset</span>
+                )}
               </div>
 
               <h2>{foodName}</h2>
@@ -287,12 +295,16 @@ function Analysis() {
               </div>
 
               <div>
-                <span>Referensi data nutrisi</span>
-                <strong>{matching.reference_name || '-'}</strong>
+                <span>{nutritionSourceLabel}</span>
+                <strong>{matching.reference_name || nutrition?.name || '-'}</strong>
                 <small>
-                  {matching.method === 'CANONICAL'
+                  {matching.method === 'ALIAS'
+                    ? 'Nama alternatif yang setara digunakan untuk menemukan data dataset.'
+                    : matching.method === 'CANONICAL'
                     ? 'Nama dasar digunakan karena variasi makanan tidak tersedia persis di dataset.'
-                    : 'Data hanya ditampilkan jika nama ditemukan pada dataset.'}
+                    : analysisResult?.nutrition_source === 'AI_ESTIMATED'
+                      ? 'Nilai merupakan estimasi AI, bukan data resmi dataset.'
+                      : 'Data nutrisi tidak ditemukan dalam dataset.'}
                 </small>
               </div>
             </div>

@@ -75,6 +75,30 @@ class NutritionRepositoryTests(SimpleTestCase):
                 "name_normalized": "nasi goreng",
             }
         )
+        writer.writerow(
+            {
+                "id": "2",
+                "calories": "17.0",
+                "proteins": "0.2",
+                "fat": "0.1",
+                "carbohydrate": "3.8",
+                "name": "Kelapa Muda air",
+                "image": "",
+                "name_normalized": "kelapa muda air",
+            }
+        )
+        writer.writerow(
+            {
+                "id": "3",
+                "calories": "20.0",
+                "proteins": "1.0",
+                "fat": "0.2",
+                "carbohydrate": "3.5",
+                "name": "Tomat air (juice) segar",
+                "image": "",
+                "name_normalized": "tomat air juice segar",
+            }
+        )
         temporary.close()
 
         self.repository = CsvNutritionRepository(
@@ -135,6 +159,27 @@ class NutritionRepositoryTests(SimpleTestCase):
         self.assertEqual(result.reference_name, "Nasi Goreng")
         self.assertEqual(result.nutrition["name"], "Nasi Goreng")
 
+    def test_alias_match_uses_equivalent_coconut_water_dataset_entry(self):
+        result = self.repository.find_for_identification("Air kelapa muda", None)
+
+        self.assertEqual(result.matching_status, "MATCHED")
+        self.assertEqual(result.match_method, "ALIAS")
+        self.assertEqual(result.reference_name, "Kelapa Muda air")
+        self.assertEqual(result.nutrition["calories"], "17.0")
+
+    def test_alias_match_uses_equivalent_tomato_juice_dataset_entry(self):
+        result = self.repository.find_for_identification("Jus tomat", None)
+
+        self.assertEqual(result.match_method, "ALIAS")
+        self.assertEqual(result.reference_name, "Tomat air (juice) segar")
+
+    def test_similar_but_different_lemon_tea_does_not_match(self):
+        result = self.repository.find_for_identification("Es teh lemon", None)
+
+        self.assertEqual(result.matching_status, "NOT_MATCHED")
+        self.assertEqual(result.match_method, "NONE")
+        self.assertIsNone(result.nutrition)
+
 
 class DjangoNutritionRepositoryTests(TestCase):
     def setUp(self):
@@ -147,6 +192,16 @@ class DjangoNutritionRepositoryTests(TestCase):
             name="Abon",
             image="",
             name_normalized="abon",
+        )
+        Nutrition.objects.create(
+            id=2,
+            calories=17.0,
+            proteins=0.2,
+            fat=0.1,
+            carbohydrate=3.8,
+            name="Kelapa Muda air",
+            image="",
+            name_normalized="kelapa muda air",
         )
 
         self.repository = DjangoNutritionRepository(

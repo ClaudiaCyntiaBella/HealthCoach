@@ -28,9 +28,15 @@ def analyze_food_images(images) -> dict:
     )
 
     note = recommendation["note"]
-    if match.match_method == "CANONICAL" and match.reference_name:
+    if match.match_method in {"CANONICAL", "ALIAS"} and match.reference_name:
+        method_description = (
+            "nama alternatif yang setara"
+            if match.match_method == "ALIAS"
+            else "nama dasar"
+        )
         reference_note = (
-            f"Data nutrisi menggunakan referensi {match.reference_name}. "
+            f"Data nutrisi menggunakan referensi {match.reference_name} "
+            f"melalui {method_description}. "
             "Bahan tambahan pada foto dapat menyebabkan nilai sebenarnya berbeda."
         )
         note = f"{note} {reference_note}".strip()
