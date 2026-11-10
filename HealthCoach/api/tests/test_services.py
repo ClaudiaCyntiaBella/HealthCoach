@@ -260,6 +260,14 @@ class DjangoNutritionRepositoryTests(TestCase):
         self.assertEqual(result.duplicate_count, 0)
         self.assertIsNone(result.nutrition)
 
+    def test_alias_match_uses_database_name_normalized(self):
+        result = self.repository.find_for_identification("Air kelapa muda", None)
+
+        self.assertEqual(result.matching_status, "MATCHED")
+        self.assertEqual(result.match_method, "ALIAS")
+        self.assertEqual(result.reference_name, "Kelapa Muda air")
+        self.assertEqual(result.nutrition["calories"], "17.0")
+
 
 class GeminiResponseParserTests(SimpleTestCase):
     def test_accepts_json_markdown_fence(self):
@@ -294,6 +302,8 @@ class FoodIdentificationTests(SimpleTestCase):
     @patch("api.services.gemini._generate_json")
     def test_uses_all_photos_as_one_food_context(self, generate_mock):
         generate_mock.return_value = {
+            "image_category": "FOOD",
+            "image_quality": "CLEAR",
             "food_name": "Nasi Goreng Ayam",
             "canonical_food_name": "Nasi Goreng",
             "confidence": "tinggi",
@@ -313,6 +323,8 @@ class FoodIdentificationTests(SimpleTestCase):
     def test_accepts_distinct_food_names_without_forcing_canonical_name(self, generate_mock):
         for food_name in ("Nasi Goreng", "Bakso", "Soto Ayam", "Bayam Tumis"):
             generate_mock.return_value = {
+                "image_category": "FOOD",
+                "image_quality": "CLEAR",
                 "food_name": food_name,
                 "canonical_food_name": None,
                 "confidence": "sedang",
@@ -324,8 +336,27 @@ class FoodIdentificationTests(SimpleTestCase):
             self.assertIsNone(result.canonical_food_name)
 
     @patch("api.services.gemini._generate_json")
+    def test_accepts_beverage_for_analysis(self, generate_mock):
+        generate_mock.return_value = {
+            "image_category": "BEVERAGE",
+            "image_quality": "CLEAR",
+            "food_name": "Air Mineral",
+            "canonical_food_name": None,
+            "confidence": "tinggi",
+            "ingredients": [],
+            "notes": "Botol air mineral terlihat.",
+        }
+
+        result = identify_food([self._image("water.jpg")])
+
+        self.assertTrue(result.is_analyzable)
+        self.assertEqual(result.image_category, "BEVERAGE")
+
+    @patch("api.services.gemini._generate_json")
     def test_unknown_food_cannot_have_canonical_name(self, generate_mock):
         generate_mock.return_value = {
+            "image_category": "UNCERTAIN",
+            "image_quality": "CLEAR",
             "food_name": None,
             "canonical_food_name": "Nasi Goreng",
             "confidence": "rendah",
@@ -339,6 +370,8 @@ class FoodIdentificationTests(SimpleTestCase):
     @patch("api.services.gemini._generate_json")
     def test_non_food_or_unclear_image_returns_unknown(self, generate_mock):
         generate_mock.return_value = {
+            "image_category": "NON_FOOD",
+            "image_quality": "CLEAR",
             "food_name": None,
             "canonical_food_name": None,
             "confidence": "rendah",
@@ -348,6 +381,65 @@ class FoodIdentificationTests(SimpleTestCase):
 
         result = identify_food([self._image("object.jpg")])
         self.assertEqual(result.status, "UNKNOWN")
+        self.assertEqual(result.image_category, "NON_FOOD")
+
+    @patch("api.services.gemini._generate_json")
+    def test_common_non_food_categories_return_unknown(self, generate_mock):
+        for image_name, notes in (
+            ("person.jpg", "Foto manusia."),
+            ("cat.jpg", "Foto hewan."),
+            ("car.jpg", "Foto kendaraan."),
+            ("scenery.jpg", "Foto pemandangan."),
+            ("document.jpg", "Foto dokumen."),
+        ):
+            generate_mock.return_value = {
+                "image_category": "NON_FOOD",
+                "image_quality": "CLEAR",
+                "food_name": None,
+                "canonical_food_name": None,
+                "confidence": "tinggi",
+                "ingredients": [],
+                "notes": notes,
+            }
+
+            result = identify_food([self._image(image_name)])
+
+            self.assertEqual(result.status, "UNKNOWN")
+            self.assertFalse(result.is_analyzable)
+
+    @patch("api.services.gemini._generate_json")
+    def test_moderately_blurry_food_remains_analyzable(self, generate_mock):
+        generate_mock.return_value = {
+            "image_category": "FOOD",
+            "image_quality": "MODERATELY_BLURRY",
+            "food_name": "Nasi Goreng",
+            "canonical_food_name": None,
+            "confidence": "sedang",
+            "ingredients": [],
+            "notes": "Makanan terlihat, tetapi foto agak buram.",
+        }
+
+        result = identify_food([self._image("blurry-rice.jpg")])
+
+        self.assertTrue(result.is_analyzable)
+        self.assertEqual(result.image_quality, "MODERATELY_BLURRY")
+
+    @patch("api.services.gemini._generate_json")
+    def test_too_blurry_image_cannot_be_analyzed(self, generate_mock):
+        generate_mock.return_value = {
+            "image_category": "UNCERTAIN",
+            "image_quality": "TOO_BLURRY",
+            "food_name": None,
+            "canonical_food_name": None,
+            "confidence": "rendah",
+            "ingredients": [],
+            "notes": "Foto terlalu buram.",
+        }
+
+        result = identify_food([self._image("very-blurry.jpg")])
+
+        self.assertEqual(result.status, "UNKNOWN")
+        self.assertFalse(result.is_analyzable)
 
 
 class NutritionEstimationTests(SimpleTestCase):
@@ -582,6 +674,93 @@ class RecommendationTests(SimpleTestCase):
 
 
 class AnalysisPipelineTests(SimpleTestCase):
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_too_blurry_image_stops_before_nutrition_services(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        identify_mock.return_value = FoodIdentification(
+            None, None, "rendah", [], "Foto terlalu buram.", "UNCERTAIN", "TOO_BLURRY"
+        )
+
+        result = analyze_food_images([object()])
+
+        self.assertEqual(result["identification"]["identification_status"], "UNKNOWN")
+        self.assertEqual(result["identification"]["image_quality"], "TOO_BLURRY")
+        self.assertIsNone(result["nutrition"])
+        self.assertIn("Foto terlalu buram", result["recommendation"])
+        repository_mock.assert_not_called()
+        estimate_mock.assert_not_called()
+        recommendation_mock.assert_not_called()
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_non_food_stops_before_nutrition_services(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        identify_mock.return_value = FoodIdentification(
+            None, None, "tinggi", [], "Foto menampilkan kendaraan.", "NON_FOOD"
+        )
+
+        result = analyze_food_images([object()])
+
+        self.assertEqual(result["identification"]["identification_status"], "UNKNOWN")
+        self.assertEqual(result["identification"]["image_category"], "NON_FOOD")
+        self.assertEqual(result["matching"]["status"], "NOT_MATCHED")
+        self.assertIsNone(result["nutrition"])
+        self.assertIn("bukan merupakan foto makanan atau minuman", result["recommendation"])
+        repository_mock.assert_not_called()
+        estimate_mock.assert_not_called()
+        recommendation_mock.assert_not_called()
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_uncertain_image_stops_before_nutrition_services(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        identify_mock.return_value = FoodIdentification(
+            None, None, "rendah", [], "Foto buram.", "UNCERTAIN"
+        )
+
+        result = analyze_food_images([object()])
+
+        self.assertEqual(result["identification"]["image_category"], "UNCERTAIN")
+        self.assertIsNone(result["nutrition"])
+        self.assertIn("tidak dapat dikenali dengan jelas", result["recommendation"])
+        repository_mock.assert_not_called()
+        estimate_mock.assert_not_called()
+        recommendation_mock.assert_not_called()
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_moderately_blurry_food_includes_warning(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        identify_mock.return_value = FoodIdentification(
+            "Nasi Goreng", None, "sedang", [], "Foto agak buram.", "FOOD", "MODERATELY_BLURRY"
+        )
+        match = NutritionMatch(
+            "Nasi Goreng", "nasi goreng", "IDENTIFIED", "MATCHED",
+            {"calories": "200"},
+        )
+        repository_mock.return_value.find_for_identification.return_value = match
+        recommendation_mock.return_value = {
+            "recommendation": "Saran.", "details": {}, "note": "Catatan.",
+        }
+
+        result = analyze_food_images([object()])
+
+        self.assertIn("Foto agak buram", result["quality_warning"])
+        repository_mock.return_value.find_for_identification.assert_called_once()
+
     @patch("api.services.pipeline.estimate_nutrition")
     @patch("api.services.pipeline.generate_recommendation")
     @patch("api.services.pipeline.get_nutrition_repository")

@@ -354,31 +354,8 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
             confidence="rendah",
             ingredients=[],
             notes="Objek tidak dapat dikenali sebagai makanan.",
+            image_category="UNCERTAIN",
         )
-
-        match = SimpleNamespace(
-            identified_name=None,
-            identification_status="UNKNOWN",
-            normalized_name="",
-            matching_status="NOT_MATCHED",
-            duplicate_count=0,
-            match_method=None,
-            reference_name=None,
-            nutrition=None,
-        )
-
-        repository_mock.return_value.find_for_identification.return_value = match
-
-        recommendation_mock.return_value = {
-            "recommendation": "Silakan unggah foto makanan yang lebih jelas.",
-            "details": {
-                "saran": "Ambil ulang foto.",
-                "alasan": "Objek belum dikenali.",
-                "pendamping_alternatif": "Tidak tersedia.",
-                "catatan_nutrisi": "Tidak ada data nutrisi.",
-            },
-            "note": "Hasil identifikasi UNKNOWN.",
-        }
 
         response = self.client.post(
             reverse("api:analyze"),
@@ -403,17 +380,9 @@ class FoodAnalysisEndpointTests(SimpleTestCase):
 
         # UNKNOWN tidak boleh menjalankan estimasi nutrisi AI.
         estimation_mock.assert_not_called()
-
-        repository_mock.return_value.find_for_identification.assert_called_once_with(
-            None,
-            None,
-        )
-
-        recommendation_mock.assert_called_once_with(
-            match,
-            nutrition=None,
-            nutrition_source="UNAVAILABLE",
-        )
+        repository_mock.assert_not_called()
+        recommendation_mock.assert_not_called()
+        self.assertIn("tidak dapat dikenali dengan jelas", body["data"]["recommendation"])
 
 
     # ==========================================================

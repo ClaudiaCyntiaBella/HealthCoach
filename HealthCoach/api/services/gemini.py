@@ -29,18 +29,29 @@ porsi yang sama. Gabungkan informasi dari seluruh foto untuk membuat satu hasil.
 Jangan mengarang nilai nutrisi, diagnosis, atau rekomendasi diet.
 
 Tugas:
-1. Tentukan nama makanan utama dalam Bahasa Indonesia.
-2. Tentukan nama makanan dasar bila makanan merupakan variasi dari makanan
+1. Klasifikasikan konteks utama foto menjadi FOOD, BEVERAGE, NON_FOOD, atau
+   UNCERTAIN. Foto hanya FOOD/BEVERAGE bila makanan/minuman nyata menjadi objek
+   utama; kemasan, gambar, dokumen, layar, atau benda berbentuk makanan bukan
+   bukti makanan/minuman nyata.
+2. Nilai kualitas visual gabungan foto menjadi CLEAR, MODERATELY_BLURRY, atau
+   TOO_BLURRY dengan mempertimbangkan blur, ketajaman, pencahayaan, dan
+   keterbacaan objek. Gunakan TOO_BLURRY jika makanan tidak dapat dikenali
+   dengan andal; pada kondisi ini food_name dan canonical_food_name wajib null.
+3. Hanya jika kategori FOOD/BEVERAGE dan kualitas bukan TOO_BLURRY, tentukan
+   nama makanan utama dalam Bahasa Indonesia.
+4. Tentukan nama makanan dasar bila makanan merupakan variasi dari makanan
    utama. Contoh: untuk "nasi goreng ayam", food_name adalah "Nasi goreng ayam"
    dan canonical_food_name adalah "Nasi Goreng". Gunakan null jika tidak yakin;
    jangan menebak nama makanan dasar.
-3. Catat komponen yang benar-benar terlihat dan yang hanya diperkirakan.
-4. Berikan keyakinan: tinggi, sedang, atau rendah.
-5. Jika objek bukan makanan atau tidak cukup jelas, gunakan food_name null dan
-   jelaskan alasannya pada notes.
+5. Catat komponen yang benar-benar terlihat dan yang hanya diperkirakan.
+6. Berikan keyakinan: tinggi, sedang, atau rendah.
+7. Jika kategori NON_FOOD atau UNCERTAIN, food_name dan canonical_food_name wajib
+   null dan jelaskan alasannya pada notes.
 
 Kembalikan JSON valid saja:
 {
+  "image_category": "FOOD | BEVERAGE | NON_FOOD | UNCERTAIN",
+  "image_quality": "CLEAR | MODERATELY_BLURRY | TOO_BLURRY",
   "food_name": "nama makanan atau null",
   "canonical_food_name": "nama makanan dasar atau null",
   "confidence": "tinggi | sedang | rendah",
@@ -59,15 +70,31 @@ class FoodIdentification:
     confidence: str
     ingredients: list[dict]
     notes: str
+    image_category: str = "FOOD"
+    image_quality: str = "CLEAR"
 
     @property
     def status(self) -> str:
-        return "IDENTIFIED" if self.food_name else "UNKNOWN"
+        return (
+            "IDENTIFIED"
+            if (
+                self.image_category in {"FOOD", "BEVERAGE"}
+                and self.image_quality != "TOO_BLURRY"
+                and self.food_name
+            )
+            else "UNKNOWN"
+        )
+
+    @property
+    def is_analyzable(self) -> bool:
+        return self.image_category in {"FOOD", "BEVERAGE"} and self.status == "IDENTIFIED"
 
     def to_dict(self) -> dict:
         return {
             "food_name": self.food_name,
             "canonical_food_name": self.canonical_food_name,
+            "image_category": self.image_category,
+            "image_quality": self.image_quality,
             "identification_status": self.status,
             "confidence": self.confidence,
             "ingredients": self.ingredients,
@@ -224,6 +251,14 @@ def identify_food(images) -> FoodIdentification:
 
     result = _generate_json(contents)
 
+    image_category = result.get("image_category")
+    if image_category not in {"FOOD", "BEVERAGE", "NON_FOOD", "UNCERTAIN"}:
+        raise GeminiResponseError()
+
+    image_quality = result.get("image_quality")
+    if image_quality not in {"CLEAR", "MODERATELY_BLURRY", "TOO_BLURRY"}:
+        raise GeminiResponseError()
+
     def optional_food_name(key: str) -> str | None:
         if key not in result:
             raise GeminiResponseError()
@@ -240,6 +275,16 @@ def identify_food(images) -> FoodIdentification:
     # Canonical name tanpa nama makanan utama adalah respons yang tidak konsisten.
     # Menolaknya mencegah hasil UNKNOWN memperoleh data nutrisi melalui canonical match.
     if food_name is None and canonical_food_name is not None:
+        raise GeminiResponseError()
+    if (image_category in {"NON_FOOD", "UNCERTAIN"} or image_quality == "TOO_BLURRY") and (
+        food_name is not None or canonical_food_name is not None
+    ):
+        raise GeminiResponseError()
+    if (
+        image_category in {"FOOD", "BEVERAGE"}
+        and image_quality != "TOO_BLURRY"
+        and food_name is None
+    ):
         raise GeminiResponseError()
 
     raw_confidence = result.get("confidence", "rendah")
@@ -273,4 +318,6 @@ def identify_food(images) -> FoodIdentification:
         confidence=confidence,
         ingredients=ingredients,
         notes=notes.strip(),
+        image_category=image_category,
+        image_quality=image_quality,
     )

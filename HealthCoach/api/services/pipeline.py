@@ -4,8 +4,63 @@ from api.services.nutrition import get_nutrition_repository
 from api.services.recommendation import generate_recommendation
 
 
+NON_FOOD_MESSAGE = (
+    "Maaf, foto yang Anda unggah bukan merupakan foto makanan atau minuman. "
+    "Silakan unggah foto makanan atau minuman untuk melakukan analisis nutrisi."
+)
+UNCERTAIN_IMAGE_MESSAGE = (
+    "Foto tidak dapat dikenali dengan jelas. Silakan ambil atau unggah foto "
+    "makanan atau minuman yang lebih jelas."
+)
+TOO_BLURRY_MESSAGE = (
+    "Foto terlalu buram dan makanan tidak dapat dikenali dengan jelas. "
+    "Silakan unggah foto yang lebih jelas."
+)
+MODERATELY_BLURRY_WARNING = (
+    "Foto agak buram. Hasil analisis mungkin kurang akurat; "
+    "unggah foto yang lebih jelas untuk hasil yang lebih baik."
+)
+
+
+def _rejected_image_result(identification) -> dict:
+    message = (
+        TOO_BLURRY_MESSAGE
+        if identification.image_quality == "TOO_BLURRY"
+        else (
+            NON_FOOD_MESSAGE
+            if identification.image_category == "NON_FOOD"
+            else UNCERTAIN_IMAGE_MESSAGE
+        )
+    )
+    return {
+        "identification": identification.to_dict(),
+        "matching": {
+            "normalized_name": None,
+            "status": "NOT_MATCHED",
+            "duplicate_count": 0,
+            "method": "NONE",
+            "reference_name": None,
+        },
+        "nutrition": None,
+        "nutrition_source": "UNAVAILABLE",
+        "estimation_note": None,
+        "quality_warning": None,
+        "recommendation": message,
+        "recommendation_details": {
+            "saran": message,
+            "alasan": identification.notes or message,
+            "pendamping_alternatif": "Tidak tersedia sebelum foto makanan atau minuman dapat dikenali.",
+            "catatan_nutrisi": "Tidak ada informasi nutrisi untuk foto ini.",
+        },
+        "note": message,
+    }
+
+
 def analyze_food_images(images) -> dict:
     identification = identify_food(images)
+    if not identification.is_analyzable:
+        return _rejected_image_result(identification)
+
     match = get_nutrition_repository().find_for_identification(
         identification.food_name,
         identification.canonical_food_name,
@@ -13,6 +68,11 @@ def analyze_food_images(images) -> dict:
     nutrition = match.nutrition
     nutrition_source = "DATASET" if match.matching_status == "MATCHED" else "UNAVAILABLE"
     estimation_note = None
+    quality_warning = (
+        MODERATELY_BLURRY_WARNING
+        if identification.image_quality == "MODERATELY_BLURRY"
+        else None
+    )
 
     if match.matching_status == "NOT_MATCHED" and identification.status == "IDENTIFIED":
         estimation = estimate_nutrition(identification)
@@ -57,6 +117,7 @@ def analyze_food_images(images) -> dict:
             if nutrition_source == "AI_ESTIMATED"
             else estimation_note
         ),
+        "quality_warning": quality_warning,
         "recommendation": recommendation["recommendation"],
         "recommendation_details": recommendation["details"],
         "note": note,

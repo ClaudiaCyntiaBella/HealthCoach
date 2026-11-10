@@ -160,3 +160,52 @@ class FoodAnalysisHistorySaveTests(TestCase):
         )
 
         analyze_mock.assert_called_once()
+
+    @patch("api.views.analyze_food_images")
+    def test_non_food_result_is_not_saved(self, analyze_mock):
+        """Validasi NON_FOOD yang sukses secara API tidak boleh masuk riwayat."""
+        self.authenticate_user()
+        rejected_result = {
+            **self.analysis_result,
+            "identification": {
+                "food_name": None,
+                "identification_status": "UNKNOWN",
+                "image_category": "NON_FOOD",
+            },
+            "matching": {"status": "NOT_MATCHED", "method": "NONE"},
+            "nutrition": None,
+            "nutrition_source": "UNAVAILABLE",
+        }
+        analyze_mock.return_value = rejected_result
+
+        response = self.client.post(
+            self.url, data={"images": [make_image()]}, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["meta"]["history_id"])
+        self.assertFalse(FoodAnalysisHistory.objects.exists())
+
+    @patch("api.views.analyze_food_images")
+    def test_too_blurry_result_is_not_saved(self, analyze_mock):
+        self.authenticate_user()
+        analyze_mock.return_value = {
+            **self.analysis_result,
+            "identification": {
+                "food_name": None,
+                "identification_status": "UNKNOWN",
+                "image_category": "UNCERTAIN",
+                "image_quality": "TOO_BLURRY",
+            },
+            "matching": {"status": "NOT_MATCHED", "method": "NONE"},
+            "nutrition": None,
+            "nutrition_source": "UNAVAILABLE",
+        }
+
+        response = self.client.post(
+            self.url, data={"images": [make_image()]}, format="multipart"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["meta"]["history_id"])
+        self.assertFalse(FoodAnalysisHistory.objects.exists())

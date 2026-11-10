@@ -289,6 +289,10 @@ function Analysis() {
               </p>
             </div>
 
+            {analysisResult?.quality_warning && (
+              <p className="an-result-note">{analysisResult.quality_warning}</p>
+            )}
+
             <div className="an-portion-card">
               <div className="an-portion-icon">
                 <Scale size={20} />
