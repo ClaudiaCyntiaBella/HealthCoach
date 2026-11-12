@@ -25,18 +25,35 @@ export default function AnalysisResult({ result }) {
   const nutrition = data.nutrition;
   const unknown =
     identification.identification_status === 'UNKNOWN';
-  const isReference = matching.status === 'REFERENCE_MATCH';
+  const nutritionSource = data.nutrition_source || 'UNAVAILABLE';
+  const isReference = nutritionSource === 'DATASET';
+  const isEstimated = nutritionSource === 'AI_ESTIMATED';
+  const details = data.recommendation_details || {};
 
   if (unknown) {
+    const category = identification.image_category;
+    const quality = identification.image_quality;
+
+    const isBlurry = quality === 'TOO_BLURRY';
+    const isNonFood = category === 'NON_FOOD';
+
+    const title = isBlurry
+      ? 'Foto Terlalu Buram'
+      : isNonFood
+        ? 'Foto Bukan Makanan atau Minuman'
+        : 'Objek Belum Dapat Dikenali';
+
+    const message = isBlurry
+      ? 'Foto terlalu buram. Ambil ulang dengan pencahayaan cukup dan pastikan kamera fokus pada makanan atau minuman.'
+      : isNonFood
+        ? 'Foto ini bukan makanan atau minuman. Silakan pilih foto makanan atau minuman yang ingin dianalisis.'
+        : 'Objek belum dapat dikenali dengan jelas. Coba ambil foto dari sudut lain.';
+
     return (
       <View style={styles.card}>
         <Feather name="alert-circle" size={30} color="#C78645" />
-        <Text style={styles.title}>Makanan Tidak Terdeteksi</Text>
-        <Text style={styles.description}>
-          HealthCoach belum dapat mengenali makanan pada foto.
-          Pastikan foto memperlihatkan makanan yang jelas,
-          lalu ganti foto dan coba kembali.
-        </Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.description}>{message}</Text>
       </View>
     );
   }
@@ -53,19 +70,24 @@ export default function AnalysisResult({ result }) {
       {isReference && nutrition && (
         <View style={styles.referenceCard}>
           <Text style={styles.referenceTitle}>
-            Nutrisi Referensi Dataset
+            Referensi Data Nutrisi
           </Text>
           <Text style={styles.referenceDescription}>
-            Referensi nutrisi: {nutrition.name}.
-            {' '}Nilai aktual dapat berbeda sesuai bahan dan porsi.
+            {matching.reference_name || nutrition.name || 'Dataset HealthCoach'}
           </Text>
         </View>
       )}
 
-      {matching.status === 'NOT_MATCHED' && (
+      {isEstimated && (
         <Text style={styles.warning}>
-          Makanan teridentifikasi, tetapi belum cocok dengan
-          data nutrisi pada dataset HealthCoach.
+          Nama makanan belum cocok dengan dataset HealthCoach.
+          Nilai nutrisi yang ditampilkan merupakan estimasi AI.
+        </Text>
+      )}
+
+      {nutritionSource === 'UNAVAILABLE' && (
+        <Text style={styles.warning}>
+          Informasi nutrisi belum tersedia untuk makanan ini.
         </Text>
       )}
 
@@ -76,7 +98,11 @@ export default function AnalysisResult({ result }) {
       {nutrition ? (
         <>
           <Text style={styles.description}>
-            {nutrition.name || 'Data nutrisi HealthCoach'}
+            {isReference
+              ? 'Data nutrisi berdasarkan dataset HealthCoach'
+              : isEstimated
+                ? 'Estimasi nutrisi oleh AI'
+                : 'Informasi nutrisi'}
           </Text>
           <View style={styles.nutritionGrid}>
             <NutritionItem
@@ -100,12 +126,10 @@ export default function AnalysisResult({ result }) {
               unit="g"
             />
           </View>
-          {!isReference && (
-            <Text style={styles.disclaimer}>
-              Nilai mengikuti entri dataset HealthCoach dan
-              belum tentu mencerminkan porsi dalam foto.
-            </Text>
-          )}
+          <Text style={styles.disclaimer}>
+            Nilai nutrisi dapat berbeda sesuai bahan, cara pengolahan,
+            dan ukuran porsi yang dikonsumsi.
+          </Text>
         </>
       ) : (
         <Text style={styles.description}>
@@ -116,15 +140,53 @@ export default function AnalysisResult({ result }) {
       )}
 
       <View style={styles.recommendation}>
-        <Text style={styles.sectionTitle}>Rekomendasi AI</Text>
-        <Text style={styles.description}>
-          {data.recommendation ||
-            'Rekomendasi belum tersedia. Informasi nutrisi tetap dapat dilihat.'}
+        <Text style={styles.sectionTitle}>
+          Rekomendasi HealthCoach AI
         </Text>
+
+        {[
+          ['Saran', details.saran],
+          ['Alasan', details.alasan],
+          ['Pendamping atau Alternatif', details.pendamping_alternatif],
+          ['Catatan Nutrisi', details.catatan_nutrisi],
+        ].some(([, value]) => typeof value === 'string' && value.trim())
+          ? [
+              ['Saran', details.saran],
+              ['Alasan', details.alasan],
+              ['Pendamping atau Alternatif', details.pendamping_alternatif],
+              ['Catatan Nutrisi', details.catatan_nutrisi],
+            ].map(([label, value]) =>
+              typeof value === 'string' && value.trim() ? (
+                <View key={label} style={{ marginTop: 10 }}>
+                  <Text style={{
+                    color: '#164C40',
+                    fontWeight: '700',
+                    marginBottom: 4,
+                  }}>
+                    {label}
+                  </Text>
+                  <Text style={styles.description}>
+                    {value}
+                  </Text>
+                </View>
+              ) : null
+            )
+          : (
+            <Text style={styles.description}>
+              {data.recommendation || 'Rekomendasi belum tersedia.'}
+            </Text>
+          )}
       </View>
 
-      {Boolean(data.note) && !isReference && (
+      {Boolean(data.note) && isReference && (
         <Text style={styles.note}>{data.note}</Text>
+      )}
+
+      {isEstimated && (
+        <Text style={styles.note}>
+          Informasi nutrisi merupakan estimasi AI,
+          bukan data resmi dataset HealthCoach.
+        </Text>
       )}
 
       <Text style={styles.disclaimer}>

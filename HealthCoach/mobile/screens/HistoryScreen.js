@@ -39,9 +39,14 @@ function HistoryResult({ result }) {
   const food = data.identification || {};
   const nutrition = data.nutrition || {};
   const matching = data.matching || {};
+  const details = data.recommendation_details || {};
 
   const foodName =
     food.food_name || nutrition.name || 'Makanan tidak diketahui';
+
+  const nutritionSource = data.nutrition_source;
+  const isDataset = nutritionSource === 'DATASET';
+  const isEstimated = nutritionSource === 'AI_ESTIMATED';
 
   const nutrients = [
     ['Kalori', nutrition.calories, 'kcal'],
@@ -62,15 +67,36 @@ function HistoryResult({ result }) {
         recommendation?.advice ||
         null;
 
+  const recommendationSections = [
+    ['Saran', details.saran],
+    ['Alasan', details.alasan],
+    ['Pendamping atau Alternatif', details.pendamping_alternatif],
+    ['Catatan Nutrisi', details.catatan_nutrisi],
+  ].filter(([, value]) =>
+    typeof value === 'string' && value.trim()
+  );
+
   return (
     <View>
       <Text style={historyStyles.foodName}>{foodName}</Text>
 
-      {nutrition.name ? (
+      {isDataset && (
         <Text style={historyStyles.reference}>
-          Referensi nutrisi: {nutrition.name}
+          Referensi nutrisi: {matching.reference_name || nutrition.name || 'Dataset HealthCoach'}
         </Text>
-      ) : null}
+      )}
+
+      {isEstimated && (
+        <Text style={historyStyles.reference}>
+          Sumber nutrisi: Estimasi AI
+        </Text>
+      )}
+
+      {nutritionSource === 'UNAVAILABLE' && (
+        <Text style={historyStyles.reference}>
+          Informasi nutrisi belum tersedia.
+        </Text>
+      )}
 
       <View style={historyStyles.nutritionGrid}>
         {nutrients.map(([label, value, unit]) => (
@@ -87,16 +113,35 @@ function HistoryResult({ result }) {
         ))}
       </View>
 
-      {recommendationText ? (
+      {(recommendationSections.length > 0 || recommendationText) && (
         <View style={historyStyles.infoCard}>
           <Text style={historyStyles.infoTitle}>
-            Rekomendasi AI
+            Rekomendasi HealthCoach AI
           </Text>
-          <Text style={historyStyles.infoText}>
-            {recommendationText}
-          </Text>
+
+          {recommendationSections.length > 0
+            ? recommendationSections.map(([label, value]) => (
+                <View key={label} style={{ marginTop: 12 }}>
+                  <Text style={{
+                    color: '#164C40',
+                    fontWeight: '700',
+                    fontSize: 14,
+                    marginBottom: 5,
+                  }}>
+                    {label}
+                  </Text>
+                  <Text style={historyStyles.infoText}>
+                    {value}
+                  </Text>
+                </View>
+              ))
+            : (
+              <Text style={historyStyles.infoText}>
+                {recommendationText}
+              </Text>
+            )}
         </View>
-      ) : null}
+      )}
 
       {food.notes ? (
         <View style={historyStyles.infoCard}>
@@ -109,19 +154,27 @@ function HistoryResult({ result }) {
         </View>
       ) : null}
 
-      {data.note ? (
-        <Text style={historyStyles.note}>{data.note}</Text>
-      ) : null}
-
-      {matching.reference_name ? (
+      {data.quality_warning ? (
         <Text style={historyStyles.note}>
-          Data nutrisi menggunakan referensi:
-          {' '}{matching.reference_name}.
+          {data.quality_warning}
         </Text>
       ) : null}
 
+      {isEstimated ? (
+        <Text style={historyStyles.note}>
+          Informasi nutrisi merupakan estimasi AI,
+          bukan data resmi dataset HealthCoach.
+        </Text>
+      ) : (
+        Boolean(data.note) && (
+          <Text style={historyStyles.note}>
+            {data.note}
+          </Text>
+        )
+      )}
+
       <Text style={historyStyles.disclaimer}>
-        Informasi bersifat edukatif, bukan diagnosis medis.
+        Informasi ini bersifat edukatif, bukan diagnosis medis.
       </Text>
     </View>
   );

@@ -283,15 +283,18 @@ export default function AnalysisScreen({ onBack }) {
                   HEALTHCOACH AI
                 </Text>
                 <Text style={styles.title}>
-                  Hasil Analisis Makanan
+                  {analysisResult?.data?.identification?.identification_status === 'UNKNOWN'
+                    ? 'Pemeriksaan Foto'
+                    : 'Hasil Analisis Makanan'}
                 </Text>
                 <Text style={styles.description}>
-                  Analisis selesai! Berikut informasi makanan
-                  dan rekomendasi nutrisi dari HealthCoach AI.
+                  {analysisResult?.data?.identification?.identification_status === 'UNKNOWN'
+                    ? 'Foto belum dapat dianalisis. Perhatikan petunjuk berikut.'
+                    : 'Analisis selesai! Berikut informasi makanan dan rekomendasi nutrisi dari HealthCoach AI.'}
                 </Text>
               </View>
 
-              {analysisResult?.identification?.identification_status ===
+              {analysisResult?.data?.identification?.identification_status ===
               'UNKNOWN' ? (
                 <View
                   style={{
@@ -331,7 +334,11 @@ export default function AnalysisScreen({ onBack }) {
                       marginBottom: 12,
                     }}
                   >
-                    Foto Tidak Sesuai
+                    {analysisResult?.data?.identification?.image_quality === 'TOO_BLURRY'
+                      ? 'Foto Terlalu Buram'
+                      : analysisResult?.data?.identification?.image_category === 'NON_FOOD'
+                      ? 'Foto Bukan Makanan atau Minuman'
+                      : 'Objek Belum Dapat Dikenali'}
                   </Text>
 
                   <Text
@@ -342,14 +349,37 @@ export default function AnalysisScreen({ onBack }) {
                       textAlign: 'center',
                     }}
                   >
-                    Kami belum dapat mengenali makanan atau
-                    minuman pada foto ini. Silakan unggah foto
-                    yang lebih jelas dan pastikan objek utama
-                    adalah makanan atau minuman.
+                    {analysisResult?.data?.identification?.image_quality === 'TOO_BLURRY'
+                      ? 'Foto terlalu buram. Ambil ulang dengan pencahayaan cukup dan pastikan kamera fokus pada makanan atau minuman.'
+                      : analysisResult?.data?.identification?.image_category === 'NON_FOOD'
+                      ? 'Foto ini bukan makanan atau minuman. Silakan pilih foto makanan atau minuman yang ingin dianalisis.'
+                      : 'Objek pada foto belum dapat dikenali dengan jelas. Coba ambil foto dari sudut lain dengan objek utama terlihat jelas.'}
                   </Text>
                 </View>
               ) : (
-                <AnalysisResult result={analysisResult} />
+                <>
+                  {analysisResult?.quality_warning ? (
+                    <View
+                      style={{
+                        backgroundColor: '#FFF5E6',
+                        borderRadius: 14,
+                        padding: 16,
+                        marginBottom: 18,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: '#92682E',
+                          fontSize: 14,
+                          lineHeight: 21,
+                        }}
+                      >
+                        {analysisResult.quality_warning}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <AnalysisResult result={analysisResult} />
+                </>
               )}
 
               <TouchableOpacity
