@@ -21,6 +21,38 @@ from api.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+PHOTO_SLOT_NAMES = ("Tampak Atas", "Sudut Samping", "Detail Makanan")
+
+MULTI_PHOTO_VALIDATION_PROMPT = """
+Anda adalah validator konsistensi foto untuk HealthCoach. Foto yang diberikan
+berurutan dalam slot Tampak Atas, Sudut Samping, dan Detail Makanan.
+
+Nilai SETIAP foto secara terpisah. Jangan mengabaikan foto yang bukan makanan
+hanya karena foto lain berisi makanan. Foto dapat diterima bila seluruh foto
+menampilkan satu hidangan/porsi yang sama atau komponen yang jelas terkait
+(misalnya nasi, ayam, sayur, dan sambal dalam satu porsi).
+
+Tolak set jika salah satu foto NON_FOOD, TOO_BLURRY, UNCERTAIN, atau bila dua
+foto menampilkan makanan/minuman yang tidak terkait. Keyboard, manusia, gelas
+kosong, kemasan kosong, dokumen, dan benda lain adalah NON_FOOD. Jangan
+menganggap objek buram sebagai makanan.
+
+Kembalikan JSON valid saja:
+{
+  "relationship_status": "CONSISTENT | INCONSISTENT",
+  "notes": "alasan singkat",
+  "slots": [
+    {
+      "slot_number": 1,
+      "image_category": "FOOD | BEVERAGE | NON_FOOD | UNCERTAIN",
+      "image_quality": "CLEAR | MODERATELY_BLURRY | TOO_BLURRY",
+      "related_to_same_dish": true,
+      "reason": "alasan singkat"
+    }
+  ]
+}
+""".strip()
+
 VISION_PROMPT = """
 Anda adalah sistem identifikasi makanan untuk aplikasi HealthCoach.
 
@@ -99,6 +131,48 @@ class FoodIdentification:
             "confidence": self.confidence,
             "ingredients": self.ingredients,
             "notes": self.notes,
+        }
+
+
+@dataclass(frozen=True)
+class PhotoSlotValidation:
+    slot_number: int
+    slot_name: str
+    image_category: str
+    image_quality: str
+    related_to_same_dish: bool
+    reason: str
+
+    def to_dict(self) -> dict:
+        return {
+            "slot_number": self.slot_number,
+            "slot_name": self.slot_name,
+            "image_category": self.image_category,
+            "image_quality": self.image_quality,
+            "related_to_same_dish": self.related_to_same_dish,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class MultiPhotoValidation:
+    status: str
+    message: str
+    slots: list[PhotoSlotValidation]
+    invalid_slots: list[PhotoSlotValidation]
+    notes: str
+
+    @property
+    def is_valid(self) -> bool:
+        return self.status == "VALID"
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "message": self.message,
+            "notes": self.notes,
+            "invalid_slots": [slot.to_dict() for slot in self.invalid_slots],
+            "slots": [slot.to_dict() for slot in self.slots],
         }
 
 
@@ -320,4 +394,121 @@ def identify_food(images) -> FoodIdentification:
         notes=notes.strip(),
         image_category=image_category,
         image_quality=image_quality,
+    )
+
+
+def _slot_name(slot_number: int) -> str:
+    return PHOTO_SLOT_NAMES[slot_number - 1]
+
+
+def _validation_message(invalid_slots: list[PhotoSlotValidation]) -> str:
+    first_slot = invalid_slots[0]
+    if first_slot.image_category == "NON_FOOD":
+        return (
+            f"Foto pada slot {first_slot.slot_name} bukan merupakan foto makanan "
+            "atau minuman. Silakan unggah foto yang sesuai."
+        )
+    if first_slot.image_quality == "TOO_BLURRY":
+        return (
+            f"Foto pada slot {first_slot.slot_name} terlalu buram. "
+            "Silakan unggah foto yang lebih jelas."
+        )
+    if first_slot.image_category == "UNCERTAIN":
+        return (
+            f"Foto pada slot {first_slot.slot_name} tidak dapat dikenali dengan jelas. "
+            "Silakan unggah foto makanan atau minuman yang lebih jelas."
+        )
+    return (
+        "Beberapa foto yang diunggah tidak menunjukkan makanan atau porsi yang sama. "
+        "Silakan ganti foto yang tidak sesuai."
+    )
+
+
+def validate_image_set(images) -> MultiPhotoValidation:
+    """Validasi tiap foto dan konsistensinya sebelum identifikasi hidangan."""
+    if not 1 <= len(images) <= len(PHOTO_SLOT_NAMES):
+        raise GeminiResponseError()
+
+    contents = [MULTI_PHOTO_VALIDATION_PROMPT]
+    for index, image in enumerate(images, start=1):
+        image.seek(0)
+        contents.append(f"Slot {index} ({_slot_name(index)}): {image.name}")
+        contents.append(
+            types.Part.from_bytes(data=image.read(), mime_type=image.content_type)
+        )
+        image.seek(0)
+
+    result = _generate_json(contents)
+    relationship_status = result.get("relationship_status")
+    slots_value = result.get("slots")
+    notes = result.get("notes", "")
+    if (
+        relationship_status not in {"CONSISTENT", "INCONSISTENT"}
+        or not isinstance(slots_value, list)
+        or len(slots_value) != len(images)
+        or not isinstance(notes, str)
+    ):
+        raise GeminiResponseError()
+
+    slots = []
+    seen_slot_numbers = set()
+    for raw_slot in slots_value:
+        if not isinstance(raw_slot, dict):
+            raise GeminiResponseError()
+        slot_number = raw_slot.get("slot_number")
+        category = raw_slot.get("image_category")
+        quality = raw_slot.get("image_quality")
+        related = raw_slot.get("related_to_same_dish")
+        reason = raw_slot.get("reason")
+        if (
+            not isinstance(slot_number, int)
+            or slot_number not in range(1, len(images) + 1)
+            or slot_number in seen_slot_numbers
+            or category not in {"FOOD", "BEVERAGE", "NON_FOOD", "UNCERTAIN"}
+            or quality not in {"CLEAR", "MODERATELY_BLURRY", "TOO_BLURRY"}
+            or not isinstance(related, bool)
+            or not isinstance(reason, str)
+        ):
+            raise GeminiResponseError()
+        seen_slot_numbers.add(slot_number)
+        slots.append(
+            PhotoSlotValidation(
+                slot_number=slot_number,
+                slot_name=_slot_name(slot_number),
+                image_category=category,
+                image_quality=quality,
+                related_to_same_dish=related,
+                reason=reason.strip(),
+            )
+        )
+
+    slots.sort(key=lambda slot: slot.slot_number)
+    invalid_slots = [
+        slot for slot in slots
+        if slot.image_category in {"NON_FOOD", "UNCERTAIN"}
+        or slot.image_quality == "TOO_BLURRY"
+    ]
+    if len(images) > 1 and relationship_status == "INCONSISTENT":
+        invalid_slots.extend(
+            slot for slot in slots
+            if not slot.related_to_same_dish and slot not in invalid_slots
+        )
+        if not invalid_slots:
+            invalid_slots.append(slots[0])
+
+    if invalid_slots:
+        return MultiPhotoValidation(
+            status="REJECTED",
+            message=_validation_message(invalid_slots),
+            slots=slots,
+            invalid_slots=invalid_slots,
+            notes=notes.strip(),
+        )
+
+    return MultiPhotoValidation(
+        status="VALID",
+        message="Semua foto valid dan menunjukkan satu makanan atau porsi yang sama.",
+        slots=slots,
+        invalid_slots=[],
+        notes=notes.strip(),
     )

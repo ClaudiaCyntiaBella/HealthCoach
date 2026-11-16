@@ -17,9 +17,12 @@ from api.exceptions import (
 from api.models import Nutrition
 from api.services.gemini import (
     FoodIdentification,
+    MultiPhotoValidation,
+    PhotoSlotValidation,
     _classify_error,
     _parse_json_response,
     identify_food,
+    validate_image_set,
 )
 from api.services.estimation import (
     NutritionEstimation,
@@ -442,6 +445,81 @@ class FoodIdentificationTests(SimpleTestCase):
         self.assertFalse(result.is_analyzable)
 
 
+class MultiPhotoValidationTests(SimpleTestCase):
+    def _image(self, name):
+        return SimpleUploadedFile(name, b"image-bytes", content_type="image/jpeg")
+
+    @patch("api.services.gemini._generate_json")
+    def test_accepts_related_components_of_one_dish(self, generate_mock):
+        generate_mock.return_value = {
+            "relationship_status": "CONSISTENT",
+            "notes": "Nasi, ayam, dan sayur merupakan satu porsi.",
+            "slots": [
+                {"slot_number": 1, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": True, "reason": "Nasi dan ayam."},
+                {"slot_number": 2, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": True, "reason": "Sudut lain porsi yang sama."},
+                {"slot_number": 3, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": True, "reason": "Detail sayur pendamping."},
+            ],
+        }
+
+        result = validate_image_set([
+            self._image("top.jpg"), self._image("side.jpg"), self._image("detail.jpg")
+        ])
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.status, "VALID")
+        self.assertEqual(len(result.slots), 3)
+
+    @patch("api.services.gemini._generate_json")
+    def test_rejects_non_food_slot_without_ignoring_it(self, generate_mock):
+        generate_mock.return_value = {
+            "relationship_status": "INCONSISTENT",
+            "notes": "Slot pertama adalah keyboard.",
+            "slots": [
+                {"slot_number": 1, "image_category": "NON_FOOD", "image_quality": "CLEAR", "related_to_same_dish": False, "reason": "Keyboard."},
+                {"slot_number": 2, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": False, "reason": "Makanan."},
+            ],
+        }
+
+        result = validate_image_set([self._image("keyboard.jpg"), self._image("food.jpg")])
+
+        self.assertFalse(result.is_valid)
+        self.assertEqual(result.invalid_slots[0].slot_name, "Tampak Atas")
+        self.assertIn("slot Tampak Atas", result.message)
+
+    @patch("api.services.gemini._generate_json")
+    def test_rejects_unrelated_foods_and_blurry_slot(self, generate_mock):
+        generate_mock.return_value = {
+            "relationship_status": "INCONSISTENT",
+            "notes": "Foto tidak menunjukkan hidangan yang sama.",
+            "slots": [
+                {"slot_number": 1, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": True, "reason": "Nasi goreng."},
+                {"slot_number": 2, "image_category": "FOOD", "image_quality": "TOO_BLURRY", "related_to_same_dish": False, "reason": "Terlalu buram."},
+            ],
+        }
+
+        result = validate_image_set([self._image("rice.jpg"), self._image("blur.jpg")])
+
+        self.assertFalse(result.is_valid)
+        self.assertIn("slot Sudut Samping", result.message)
+        self.assertIn("terlalu buram", result.message)
+
+    @patch("api.services.gemini._generate_json")
+    def test_rejects_two_unrelated_foods(self, generate_mock):
+        generate_mock.return_value = {
+            "relationship_status": "INCONSISTENT",
+            "notes": "Kedua foto menunjukkan makanan yang berbeda.",
+            "slots": [
+                {"slot_number": 1, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": False, "reason": "Nasi goreng."},
+                {"slot_number": 2, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": False, "reason": "Semangkuk soto terpisah."},
+            ],
+        }
+
+        result = validate_image_set([self._image("fried-rice.jpg"), self._image("soup.jpg")])
+
+        self.assertFalse(result.is_valid)
+        self.assertIn("tidak menunjukkan makanan atau porsi yang sama", result.message)
+
+
 class NutritionEstimationTests(SimpleTestCase):
     def _identification(self, confidence="tinggi"):
         return FoodIdentification(
@@ -674,6 +752,42 @@ class RecommendationTests(SimpleTestCase):
 
 
 class AnalysisPipelineTests(SimpleTestCase):
+    def setUp(self):
+        self.validation_mock = self.enterContext(
+            patch("api.services.pipeline.validate_image_set")
+        )
+        valid_slot = PhotoSlotValidation(
+            1, "Tampak Atas", "FOOD", "CLEAR", True, "Makanan terlihat."
+        )
+        self.validation_mock.return_value = MultiPhotoValidation(
+            "VALID", "Foto valid.", [valid_slot], [], "Makanan terlihat."
+        )
+
+    @patch("api.services.pipeline.generate_recommendation")
+    @patch("api.services.pipeline.estimate_nutrition")
+    @patch("api.services.pipeline.get_nutrition_repository")
+    @patch("api.services.pipeline.identify_food")
+    def test_rejected_multi_photo_set_stops_before_analysis(
+        self, identify_mock, repository_mock, estimate_mock, recommendation_mock
+    ):
+        invalid_slot = PhotoSlotValidation(
+            1, "Tampak Atas", "NON_FOOD", "CLEAR", False, "Keyboard."
+        )
+        self.validation_mock.return_value = MultiPhotoValidation(
+            "REJECTED",
+            "Foto pada slot Tampak Atas bukan merupakan foto makanan atau minuman. Silakan unggah foto yang sesuai.",
+            [invalid_slot], [invalid_slot], "Keyboard.",
+        )
+
+        result = analyze_food_images([object(), object()])
+
+        self.assertEqual(result["photo_validation"]["status"], "REJECTED")
+        self.assertIn("slot Tampak Atas", result["recommendation"])
+        self.assertIsNone(result["nutrition"])
+        identify_mock.assert_not_called()
+        repository_mock.assert_not_called()
+        estimate_mock.assert_not_called()
+        recommendation_mock.assert_not_called()
     @patch("api.services.pipeline.generate_recommendation")
     @patch("api.services.pipeline.estimate_nutrition")
     @patch("api.services.pipeline.get_nutrition_repository")

@@ -156,6 +156,7 @@ function Analysis() {
   const matching = analysisResult?.matching || {}
   const nutrition = analysisResult?.nutrition
   const recommendationDetails = analysisResult?.recommendation_details
+  const photoValidation = analysisResult?.photo_validation
   const foodName = identification.food_name || 'Makanan belum dikenali'
   const isMatched = matching.status === 'MATCHED' && nutrition
   const nutritionSourceLabel = analysisResult?.nutrition_source === 'DATASET'
@@ -288,6 +289,10 @@ function Analysis() {
                 )}
               </p>
             </div>
+
+            {photoValidation?.status === 'REJECTED' && (
+              <p className="an-result-note">{photoValidation.message}</p>
+            )}
 
             {analysisResult?.quality_warning && (
               <p className="an-result-note">{analysisResult.quality_warning}</p>

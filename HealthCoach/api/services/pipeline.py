@@ -1,4 +1,4 @@
-from api.services.gemini import identify_food
+from api.services.gemini import FoodIdentification, identify_food, validate_image_set
 from api.services.estimation import AI_ESTIMATION_DISCLAIMER, estimate_nutrition
 from api.services.nutrition import get_nutrition_repository
 from api.services.recommendation import generate_recommendation
@@ -56,10 +56,38 @@ def _rejected_image_result(identification) -> dict:
     }
 
 
+def _rejected_photo_set_result(validation) -> dict:
+    identification = FoodIdentification(
+        food_name=None,
+        canonical_food_name=None,
+        confidence="rendah",
+        ingredients=[],
+        notes=validation.message,
+        image_category="NON_FOOD" if any(
+            slot.image_category == "NON_FOOD" for slot in validation.invalid_slots
+        ) else "UNCERTAIN",
+        image_quality="TOO_BLURRY" if any(
+            slot.image_quality == "TOO_BLURRY" for slot in validation.invalid_slots
+        ) else "CLEAR",
+    )
+    result = _rejected_image_result(identification)
+    result["photo_validation"] = validation.to_dict()
+    result["recommendation"] = validation.message
+    result["recommendation_details"]["saran"] = validation.message
+    result["note"] = validation.message
+    return result
+
+
 def analyze_food_images(images) -> dict:
+    photo_validation = validate_image_set(images)
+    if not photo_validation.is_valid:
+        return _rejected_photo_set_result(photo_validation)
+
     identification = identify_food(images)
     if not identification.is_analyzable:
-        return _rejected_image_result(identification)
+        result = _rejected_image_result(identification)
+        result["photo_validation"] = photo_validation.to_dict()
+        return result
 
     match = get_nutrition_repository().find_for_identification(
         identification.food_name,
@@ -118,6 +146,7 @@ def analyze_food_images(images) -> dict:
             else estimation_note
         ),
         "quality_warning": quality_warning,
+        "photo_validation": photo_validation.to_dict(),
         "recommendation": recommendation["recommendation"],
         "recommendation_details": recommendation["details"],
         "note": note,
