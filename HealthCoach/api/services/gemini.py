@@ -488,7 +488,10 @@ def validate_image_set(images) -> MultiPhotoValidation:
         if slot.image_category in {"NON_FOOD", "UNCERTAIN"}
         or slot.image_quality == "TOO_BLURRY"
     ]
-    if len(images) > 1 and relationship_status == "INCONSISTENT":
+    if len(images) > 1 and (
+        relationship_status == "INCONSISTENT"
+        or any(not slot.related_to_same_dish for slot in slots)
+    ):
         invalid_slots.extend(
             slot for slot in slots
             if not slot.related_to_same_dish and slot not in invalid_slots

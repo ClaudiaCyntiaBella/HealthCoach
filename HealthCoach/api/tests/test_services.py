@@ -519,6 +519,24 @@ class MultiPhotoValidationTests(SimpleTestCase):
         self.assertFalse(result.is_valid)
         self.assertIn("tidak menunjukkan makanan atau porsi yang sama", result.message)
 
+    @patch("api.services.gemini._generate_json")
+    def test_rejects_unrelated_slot_even_if_overall_status_is_consistent(self, generate_mock):
+        generate_mock.return_value = {
+            "relationship_status": "CONSISTENT",
+            "notes": "Respons gabungan keliru menyatakan konsisten.",
+            "slots": [
+                {"slot_number": 1, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": True, "reason": "Nasi goreng."},
+                {"slot_number": 2, "image_category": "FOOD", "image_quality": "CLEAR", "related_to_same_dish": False, "reason": "Makanan berbeda."},
+            ],
+        }
+
+        result = validate_image_set([self._image("fried-rice.jpg"), self._image("other-food.jpg")])
+
+        self.assertFalse(result.is_valid)
+        self.assertEqual(result.status, "REJECTED")
+        self.assertEqual(result.invalid_slots[0].slot_name, "Sudut Samping")
+        self.assertIn("tidak menunjukkan makanan atau porsi yang sama", result.message)
+
 
 class NutritionEstimationTests(SimpleTestCase):
     def _identification(self, confidence="tinggi"):
