@@ -141,11 +141,25 @@ export default function LoginScreen({ onGoToRegister, onLoginSuccess }) {
         message: 'Selamat datang di HealthCoach.',
       });
     } catch (error) {
+      const errorMessage = String(error?.message || '');
+
+      const invalidCredentials =
+        /no active account found with the given credentials/i.test(errorMessage);
+
+      const connectionFailed =
+        /network request failed|failed to fetch|networkerror/i.test(errorMessage);
+
+      const userMessage = invalidCredentials
+        ? 'Username atau password yang dimasukkan tidak sesuai. Silakan periksa kembali.'
+        : connectionFailed
+          ? 'Tidak dapat terhubung ke HealthCoach. Periksa koneksi internet dan coba lagi.'
+          : 'Login belum berhasil. Silakan coba kembali.';
+
       setFeedback({
         visible: true,
         type: 'error',
         title: 'Login gagal',
-        message: error.message || 'Tidak dapat terhubung ke server.',
+        message: userMessage,
       });
     } finally {
       setIsLoading(false);
