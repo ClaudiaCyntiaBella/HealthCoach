@@ -29,6 +29,10 @@ export default function AnalysisResult({ result }) {
   const isReference = nutritionSource === 'DATASET';
   const isEstimated = nutritionSource === 'AI_ESTIMATED';
   const details = data.recommendation_details || {};
+  const validationMessage =
+    data.photo_validation?.status === 'REJECTED'
+      ? data.photo_validation?.message
+      : null;
 
   if (unknown) {
     const category = identification.image_category;
@@ -41,13 +45,17 @@ export default function AnalysisResult({ result }) {
       ? 'Foto Terlalu Buram'
       : isNonFood
         ? 'Foto Bukan Makanan atau Minuman'
-        : 'Objek Belum Dapat Dikenali';
+        : validationMessage
+          ? 'Foto Tidak Sesuai'
+          : 'Objek Belum Dapat Dikenali';
 
-    const message = isBlurry
-      ? 'Foto terlalu buram. Ambil ulang dengan pencahayaan cukup dan pastikan kamera fokus pada makanan atau minuman.'
-      : isNonFood
-        ? 'Foto ini bukan makanan atau minuman. Silakan pilih foto makanan atau minuman yang ingin dianalisis.'
-        : 'Objek belum dapat dikenali dengan jelas. Coba ambil foto dari sudut lain.';
+    const message = validationMessage || (
+      isBlurry
+        ? 'Foto terlalu buram. Ambil ulang dengan pencahayaan cukup dan pastikan kamera fokus pada makanan atau minuman.'
+        : isNonFood
+          ? 'Foto ini bukan makanan atau minuman. Silakan pilih foto makanan atau minuman yang ingin dianalisis.'
+          : 'Objek belum dapat dikenali dengan jelas. Coba ambil foto dari sudut lain.'
+    );
 
     return (
       <View style={styles.card}>

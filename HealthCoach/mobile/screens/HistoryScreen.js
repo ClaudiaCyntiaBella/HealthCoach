@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   SafeAreaView,
   ScrollView,
   TextInput,
@@ -318,6 +319,7 @@ export default function HistoryScreen({ onBack }) {
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
 
   const loadHistories = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -356,30 +358,28 @@ export default function HistoryScreen({ onBack }) {
 
   const confirmDelete = () => {
     if (!selected || deleting) return;
+    setDeleteDialogVisible(true);
+  };
 
-    Alert.alert(
-      'Hapus riwayat?',
-      'Riwayat analisis ini akan dihapus secara permanen.',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Hapus',
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await deleteHistory(selected.id);
-              setSelected(null);
-              await loadHistories(true);
-            } catch (err) {
-              Alert.alert('Gagal menghapus', err.message);
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+  const executeDelete = async () => {
+    if (!selected || deleting) return;
+
+    setDeleting(true);
+
+    try {
+      await deleteHistory(selected.id);
+      setDeleteDialogVisible(false);
+      setSelected(null);
+      await loadHistories(true);
+    } catch (err) {
+      setDeleteDialogVisible(false);
+      Alert.alert(
+        'Gagal menghapus',
+        err.message || 'Riwayat belum berhasil dihapus.'
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const filteredHistories = histories.filter((item) =>
@@ -579,7 +579,74 @@ export default function HistoryScreen({ onBack }) {
           />
         )}
       </LinearGradient>
-    </SafeAreaView>
+          <Modal
+        visible={deleteDialogVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!deleting) setDeleteDialogVisible(false);
+        }}
+      >
+        <View style={deleteModalStyles.overlay}>
+          <View style={deleteModalStyles.card}>
+            <View style={deleteModalStyles.iconCircle}>
+              <Feather
+                name="trash-2"
+                size={34}
+                color="#D96868"
+              />
+            </View>
+
+            <Text style={deleteModalStyles.title}>
+              Hapus Riwayat?
+            </Text>
+
+            <Text style={deleteModalStyles.description}>
+              Riwayat analisis ini akan dihapus secara permanen
+              dan tidak dapat dipulihkan.
+            </Text>
+
+            <TouchableOpacity
+              style={deleteModalStyles.cancelButton}
+              activeOpacity={0.85}
+              disabled={deleting}
+              onPress={() => setDeleteDialogVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Batal menghapus riwayat"
+            >
+              <Text style={deleteModalStyles.cancelText}>
+                Batal
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={deleteModalStyles.deleteButton}
+              activeOpacity={0.85}
+              disabled={deleting}
+              onPress={executeDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Konfirmasi hapus riwayat"
+            >
+              {deleting ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Feather
+                    name="trash-2"
+                    size={19}
+                    color="#FFFFFF"
+                  />
+                  <Text style={deleteModalStyles.deleteText}>
+                    Ya, Hapus Riwayat
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+</SafeAreaView>
   );
 }
 
@@ -691,4 +758,82 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   deleteText: { color: '#C74848', fontWeight: '700' },
+});
+
+
+const deleteModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(20, 49, 44, 0.34)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingHorizontal: 26,
+    paddingTop: 32,
+    paddingBottom: 26,
+    alignItems: 'center',
+    shadowColor: '#164C40',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 10,
+  },
+  iconCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#FDECEC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#164C40',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  description: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: '#69847B',
+    textAlign: 'center',
+    marginBottom: 26,
+  },
+  cancelButton: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#164C40',
+  },
+  deleteButton: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: '#D96868',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  deleteText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
 });

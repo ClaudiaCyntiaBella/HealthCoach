@@ -338,6 +338,8 @@ export default function AnalysisScreen({ onBack }) {
                       ? 'Foto Terlalu Buram'
                       : analysisResult?.data?.identification?.image_category === 'NON_FOOD'
                       ? 'Foto Bukan Makanan atau Minuman'
+                      : analysisResult?.data?.photo_validation?.status === 'REJECTED'
+                      ? 'Foto Tidak Sesuai'
                       : 'Objek Belum Dapat Dikenali'}
                   </Text>
 
@@ -349,7 +351,10 @@ export default function AnalysisScreen({ onBack }) {
                       textAlign: 'center',
                     }}
                   >
-                    {analysisResult?.data?.identification?.image_quality === 'TOO_BLURRY'
+                    {analysisResult?.data?.photo_validation?.status === 'REJECTED' &&
+                    analysisResult?.data?.photo_validation?.message
+                      ? analysisResult.data.photo_validation.message
+                      : analysisResult?.data?.identification?.image_quality === 'TOO_BLURRY'
                       ? 'Foto terlalu buram. Ambil ulang dengan pencahayaan cukup dan pastikan kamera fokus pada makanan atau minuman.'
                       : analysisResult?.data?.identification?.image_category === 'NON_FOOD'
                       ? 'Foto ini bukan makanan atau minuman. Silakan pilih foto makanan atau minuman yang ingin dianalisis.'
